@@ -23,6 +23,23 @@ try {
 }
 
 /**
+ * Endpoint : Authentification Administrateur (davhuin@gmail.com)
+ * POST /api/auth/login
+ */
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  const adminEmail = process.env.ADMIN_EMAIL || 'davhuin@gmail.com';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Lumios2026!';
+
+  if (email && email.toLowerCase().trim() === adminEmail.toLowerCase() && password === adminPassword) {
+    const token = Buffer.from(`${adminEmail}:${Date.now()}`).toString('base64');
+    return res.json({ success: true, token, user: { email: adminEmail } });
+  }
+
+  return res.status(401).json({ error: 'Identifiants incorrects. Accès réservé à l\'administrateur.' });
+});
+
+/**
  * Endpoint : Récupérer les ventes et marges quotidiennes agrégées
  * GET /api/sales?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&force=true
  */
