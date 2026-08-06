@@ -517,7 +517,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Coût par Expédition (€)</label>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Coût par Expédition (€ HT)</label>
                   <input
                     type="number"
                     step="0.10"
