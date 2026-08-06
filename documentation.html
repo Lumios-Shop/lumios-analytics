@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Google Ads API Tool Documentation - Lumios Analytics</title>
+<style>
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    margin: 40px;
+    line-height: 1.6;
+    background: #ffffff;
+  }
+  .header {
+    border-bottom: 3px solid #2563eb;
+    padding-bottom: 20px;
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #64748b;
+    margin-top: 4px;
+  }
+  .badge {
+    background: #eff6ff;
+    color: #2563eb;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 12px;
+    border: 1px solid #bfdbfe;
+  }
+  h2 {
+    font-size: 18px;
+    color: #1e40af;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 6px;
+  }
+  p, li {
+    font-size: 13.5px;
+    color: #334155;
+  }
+  ul {
+    margin-top: 6px;
+    padding-left: 20px;
+  }
+  li {
+    margin-bottom: 6px;
+  }
+  .box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #2563eb;
+    padding: 14px 18px;
+    border-radius: 6px;
+    margin: 16px 0;
+  }
+  .footer {
+    margin-top: 40px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 16px;
+    font-size: 11px;
+    color: #94a3b8;
+    text-align: center;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 12px;
+  }
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">Lumios Analytics</div>
+    <div class="subtitle">Internal Executive E-Commerce Performance & Financial Dashboard</div>
+  </div>
+  <div class="badge">Google Ads API Compliance Documentation</div>
+</div>
+
+<div class="box">
+  <strong>Application Purpose:</strong> Read-Only Internal Reporting Tool<br>
+  <strong>Developer Company / Owner:</strong> Lumios le Jeu (Internal Use Only)<br>
+  <strong>Target End Users:</strong> Internal Business Management Team (Private Access)
+</div>
+
+<h2>1. Executive Summary & Tool Overview</h2>
+<p>
+  <strong>Lumios Analytics</strong> is a proprietary, internal executive dashboard built specifically for <em>Lumios le Jeu</em>. The tool consolidates multi-channel e-commerce performance metrics (Shopify sales, Amazon SP-API orders, shipping costs, payment gateway fees, and advertising expenditures) into a single unified financial P&L view.
+</p>
+<p>
+  The primary goal of integrating the Google Ads API is to automatically retrieve daily advertising spend metrics to calculate accurate <strong>ROAS (Return on Ad Spend)</strong>, <strong>CPA (Cost Per Acquisition)</strong>, and <strong>Net Profit Margins</strong> in real time.
+</p>
+
+<h2>2. Google Ads API Scope & Usage Details</h2>
+<p>The application requires <strong>Read-Only Access</strong> to basic performance reporting data via the Google Ads API REST endpoints:</p>
+<ul>
+  <li><strong>Query Types:</strong> Google Ads Query Language (GAQL) queries requesting daily cost metrics.</li>
+  <li><strong>Fields Requested:</strong> <code>segments.date</code>, <code>metrics.cost_micros</code> from the <code>customer</code> resource.</li>
+  <li><strong>Access Frequency:</strong> Automated once-daily sync job to fetch previous day spend.</li>
+  <li><strong>No Write Operations:</strong> The tool does NOT modify, create, manage, or delete any Google Ads campaigns, ads, keywords, or budgets.</li>
+</ul>
+
+<h2>3. Key Dashboard Features & Workflow</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Feature Component</th>
+      <th>Description & Metric Data Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Financial P&L Table</strong></td>
+      <td>Aggregates Gross Revenue (Shopify + Amazon) minus Discounts, Returns, Shipping Costs, Payment Fees, and Google/Meta Ad Spends.</td>
+    </tr>
+    <tr>
+      <td><strong>ROAS & CPA Analytics</strong></td>
+      <td>Calculates overall Return On Ad Spend <code>(Total Revenue / Total Ad Spend)</code> and Cost Per Acquisition <code>(Total Ad Spend / Order Count)</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Net Margin Calculator</strong></td>
+      <td>Deducts 20% VAT/TVA, COGS (Product Costs), shipping rates, and ad spend to provide net HT/TTC net profit margins.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. Data Storage, Security & Compliance</h2>
+<ul>
+  <li><strong>Data Isolation & Privacy:</strong> All data fetched from the Google Ads API is strictly used for internal reporting of <em>Lumios le Jeu</em>. Data is never shared with third parties, sold, or exposed publicly.</li>
+  <li><strong>Secure OAuth 2.0 Flow:</strong> Authentication uses Google OAuth 2.0 with offline access (Refresh Token) restricted exclusively to authorized internal company accounts.</li>
+  <li><strong>Local Secure Storage:</strong> Metrics are cached in a private, encrypted local database strictly accessible within the company server environment.</li>
+</ul>
+
+<h2>5. Contact & Authorization</h2>
+<p>
+  This document serves as formal application documentation for <strong>Basic Access</strong> to the Google Ads API for internal enterprise dashboard monitoring.
+</p>
+<p>
+  <strong>Developer Account Name:</strong> Lumios le Jeu<br>
+  <strong>MCC Manager Account ID:</strong> 101-114-6254<br>
+  <strong>Client Account ID:</strong> 885-546-7709<br>
+  <strong>Contact Email:</strong> contact@lumios-le-jeu.fr
+</p>
+
+<div class="footer">
+  Confidential & Proprietary — Prepared exclusively for Google Ads API Compliance Review Team & Lumios le Jeu Executive Board.
+</div>
+
+</body>
+</html>
