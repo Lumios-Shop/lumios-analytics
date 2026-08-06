@@ -18,8 +18,18 @@ export default function ConfigPanel({ onConfigUpdated }) {
   const [editingValue, setEditingValue] = useState('');
 
   // États pour Frais de Règlement & Expédition
-  const [paymentFees, setPaymentFees] = useState([]);
-  const [shippingCosts, setShippingCosts] = useState([]);
+  const defaultPaymentFees = [
+    { code: 'cb', name: 'Carte Bancaire / Stripe', percent_fee: 1.4, fixed_fee: 0.25 },
+    { code: 'paypal', name: 'PayPal', percent_fee: 2.9, fixed_fee: 0.35 }
+  ];
+  const defaultShippingCosts = [
+    { code: 'domicile', name: 'Livraison Domicile (Colissimo/DPD)', cost_per_order: 5.50 },
+    { code: 'relais', name: 'Livraison Point Relais (Mondial Relay)', cost_per_order: 3.50 },
+    { code: 'express', name: 'Livraison Express (Chronopost)', cost_per_order: 9.90 }
+  ];
+
+  const [paymentFees, setPaymentFees] = useState(defaultPaymentFees);
+  const [shippingCosts, setShippingCosts] = useState(defaultShippingCosts);
 
   // États pour Dépenses Ads
   const [adSpendsInput, setAdSpendsInput] = useState({
@@ -173,8 +183,11 @@ export default function ConfigPanel({ onConfigUpdated }) {
     }
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.sku.toLowerCase().includes(search.toLowerCase()) || p.name.toLowerCase().includes(search.toLowerCase());
+  const productList = Array.isArray(products) ? products : [];
+  const filteredProducts = productList.filter(p => {
+    const pSku = String(p.sku || '');
+    const pName = String(p.name || '');
+    const matchesSearch = pSku.toLowerCase().includes(search.toLowerCase()) || pName.toLowerCase().includes(search.toLowerCase());
     const matchesSource = filterSource === 'all' || p.source === filterSource;
     return matchesSearch && matchesSource;
   });
