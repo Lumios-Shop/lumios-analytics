@@ -240,6 +240,57 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               })}
             </tr>
 
+            {/* SECTION 3.5: DÉTAIL DES FRAIS DE TRANSACTION ET EXPÉDITION */}
+            <tr className="bg-slate-800 text-white font-extrabold">
+              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">COMMISSIONS & FRAIS DE TRANSACTION</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2.5 text-center text-xs font-extrabold text-red-300">
+                  -{formatCurrency(col.totalFees)}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-2 text-red-600">Frais de règlement Shopify (CB / PayPal)</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2 text-center text-red-600">
+                  -{formatCurrency(col.shopifyFees)}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-2 text-red-600">Commission Marketplace Amazon</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2 text-center text-red-600">
+                  -{formatCurrency(col.amazonFees)}
+                </td>
+              ))}
+            </tr>
+
+            <tr className="bg-slate-800 text-white font-extrabold">
+              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">FRAIS DE TRANSPORT & EXPÉDITION</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2.5 text-center text-xs font-extrabold text-red-300">
+                  -{formatCurrency(col.totalShipping)}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-2 text-red-600">Frais livraison Shopify (Domicile, Relais, Express)</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2 text-center text-red-600">
+                  -{formatCurrency(col.shopifyShipping)}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-2 text-red-600">Frais d'expédition Amazon (FBA / Transport)</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2 text-center text-red-600">
+                  -{formatCurrency(col.amazonShipping)}
+                </td>
+              ))}
+            </tr>
+
             {/* SECTION 4: DÉPENSES ADS */}
             <tr className="bg-slate-700 text-white font-extrabold">
               <td className="px-6 py-2.5 uppercase tracking-wider text-xs">Dépenses Ads</td>

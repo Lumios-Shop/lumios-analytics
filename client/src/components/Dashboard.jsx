@@ -13,6 +13,8 @@ import { BarChart3, CreditCard, Truck, Calculator } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
+import UnitEconomicsCard from './UnitEconomicsCard';
+
 export default function Dashboard({ refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'payments', 'shipping', 'margin'
   const get24MonthsDefaultDates = () => {
@@ -175,6 +177,9 @@ export default function Dashboard({ refreshTrigger }) {
               <div className="grid grid-cols-1 gap-6">
                 <SalesChart data={salesData} granularity={filter.granularity} />
               </div>
+
+              {/* ANLYSE UNITAIRE : COMBIEN COÛTE 1 VENTE (SHOPIFY VS AMAZON & CPA/ROAS) */}
+              <UnitEconomicsCard salesData={monthlySalesData.length > 0 ? monthlySalesData : salesData} />
 
               {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L (STRICTEMENT MENSUEL) */}
               <PerformancePnlTable data={monthlySalesData} granularity="monthly" />
