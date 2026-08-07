@@ -25,7 +25,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   const defaultShippingCosts = [
     { code: 'domicile', name: 'Livraison Domicile (Colissimo/DPD)', cost_per_order: 5.50 },
     { code: 'relais', name: 'Livraison Point Relais (Mondial Relay)', cost_per_order: 3.50 },
-    { code: 'express', name: 'Livraison Express (Chronopost)', cost_per_order: 9.90 }
+    { code: 'express', name: 'Livraison Express 24h', cost_per_order: 12.99 }
   ];
 
   const [paymentFees, setPaymentFees] = useState(defaultPaymentFees);
@@ -183,7 +183,13 @@ export default function ConfigPanel({ onConfigUpdated }) {
     }
   };
 
-  const productList = Array.isArray(products) ? products : [];
+  const productList = (Array.isArray(products) ? products : []).filter(p => {
+    const pSku = String(p.sku || '').toUpperCase();
+    const pName = String(p.name || '').toUpperCase();
+    // Ne garder que les vrais produits vendus sur la boutique (Lumios)
+    return pName.includes('LUMIOS') || pSku.includes('LUMIOS') || pSku.includes('AMAZON-DEFAULT') || p.source === 'shopify' || p.source === 'amazon';
+  });
+
   const filteredProducts = productList.filter(p => {
     const pSku = String(p.sku || '');
     const pName = String(p.name || '');

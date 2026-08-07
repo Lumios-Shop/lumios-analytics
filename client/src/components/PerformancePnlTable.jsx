@@ -277,8 +277,8 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
             {/* SECTION 5: ROAS (BASÉ SUR VENTES NETTES HT) & CPA */}
             <tr className="bg-slate-900 text-white font-black border-t border-slate-700">
               <td className="px-6 py-3 text-xs uppercase flex items-center gap-2">
-                <span>ROAS (Ventes Nettes HT / Ads)</span>
-                <span title="Calculé sur les Ventes Nettes Hors Taxes (HT) divisées par le budget Ads total" className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-indigo-500/30 text-indigo-300 rounded-full cursor-help">
+                <span>ROAS</span>
+                <span title="(Ventes Nettes HT / Ads)" className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-indigo-500/30 text-indigo-300 rounded-full cursor-help">
                   ?
                 </span>
               </td>
