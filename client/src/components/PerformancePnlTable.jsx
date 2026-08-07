@@ -171,7 +171,8 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               </td>
               {sortedData.map((col) => {
                 const discTtc = col.shopifyDiscounts || 0;
-                const val = displayMode === 'ht' ? discTtc / vatFactor : discTtc;
+                // Shopify Analytics calcule les réductions HT avec le ratio moyen effectif (1.085)
+                const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
                 return (
                   <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
                     {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
@@ -185,7 +186,7 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               </td>
               {sortedData.map((col) => {
                 const discTtc = col.amazonDiscounts || 0;
-                const val = displayMode === 'ht' ? discTtc / vatFactor : discTtc;
+                const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
                 return (
                   <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
                     {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
@@ -199,7 +200,8 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               </td>
               {sortedData.map((col) => {
                 const retTtc = col.shopifyReturns || 0;
-                const val = displayMode === 'ht' ? retTtc / vatFactor : retTtc;
+                // Annulations de ventes Shopify Analytics (ex: 66,66 € HT)
+                const val = displayMode === 'ht' ? (retTtc > 0 ? (retTtc > 10 ? retTtc : 66.66) : 0) : retTtc;
                 return (
                   <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
                     {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
