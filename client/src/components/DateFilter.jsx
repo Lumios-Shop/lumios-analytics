@@ -7,6 +7,7 @@ const PRESETS = [
   { id: '7days', label: '7 derniers jours' },
   { id: '30days', label: '30 derniers jours' },
   { id: 'month', label: 'Mois en cours' },
+  { id: 'last_month', label: 'Mois dernier' },
   { id: '12months', label: '12 derniers mois' },
   { id: '24months', label: '24 derniers mois' },
   { id: 'custom', label: 'Personnalisé' }
@@ -20,8 +21,8 @@ const GRANULARITIES = [
 ];
 
 export default function DateFilter({ onFilterChange }) {
-  const [selectedPreset, setSelectedPreset] = useState('24months');
-  const [granularity, setGranularity] = useState('monthly');
+  const [selectedPreset, setSelectedPreset] = useState('30days');
+  const [granularity, setGranularity] = useState('daily');
   const [dates, setDates] = useState({
     startDate: '',
     endDate: ''
@@ -63,6 +64,14 @@ export default function DateFilter({ onFilterChange }) {
         return {
           startDate: localFirstDay.toISOString().split('T')[0],
           endDate: todayStr
+        };
+      }
+      case 'last_month': {
+        const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        return {
+          startDate: firstDayLastMonth.toISOString().split('T')[0],
+          endDate: lastDayLastMonth.toISOString().split('T')[0]
         };
       }
       case '12months': {

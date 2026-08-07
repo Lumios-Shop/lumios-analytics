@@ -17,19 +17,19 @@ import UnitEconomicsCard from './UnitEconomicsCard';
 
 export default function Dashboard({ refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'payments', 'shipping', 'margin'
-  const get24MonthsDefaultDates = () => {
+  const get30DaysDefaultDates = () => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
-    const twentyFourMonthsAgo = new Date();
-    twentyFourMonthsAgo.setMonth(today.getMonth() - 24);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 29);
     return {
-      startDate: twentyFourMonthsAgo.toISOString().split('T')[0],
+      startDate: thirtyDaysAgo.toISOString().split('T')[0],
       endDate: todayStr,
-      granularity: 'monthly'
+      granularity: 'daily'
     };
   };
 
-  const [filter, setFilter] = useState(get24MonthsDefaultDates());
+  const [filter, setFilter] = useState(get30DaysDefaultDates());
   const [salesData, setSalesData] = useState([]);
   const [monthlySalesData, setMonthlySalesData] = useState([]);
   const [loading, setLoading] = useState(false);
