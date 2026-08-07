@@ -240,60 +240,9 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               })}
             </tr>
 
-            {/* SECTION 3.5: DÉTAIL DES FRAIS DE TRANSACTION ET EXPÉDITION */}
-            <tr className="bg-slate-800 text-white font-extrabold">
-              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">COMMISSIONS & FRAIS DE TRANSACTION</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2.5 text-center text-xs font-extrabold text-red-300">
-                  -{formatCurrency(col.totalFees)}
-                </td>
-              ))}
-            </tr>
-            <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2 text-red-600">Frais de règlement Shopify (CB / PayPal)</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-red-600">
-                  -{formatCurrency(col.shopifyFees)}
-                </td>
-              ))}
-            </tr>
-            <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2 text-red-600">Commission Marketplace Amazon</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-red-600">
-                  -{formatCurrency(col.amazonFees)}
-                </td>
-              ))}
-            </tr>
-
-            <tr className="bg-slate-800 text-white font-extrabold">
-              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">FRAIS DE TRANSPORT & EXPÉDITION</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2.5 text-center text-xs font-extrabold text-red-300">
-                  -{formatCurrency(col.totalShipping)}
-                </td>
-              ))}
-            </tr>
-            <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2 text-red-600">Frais livraison Shopify (Domicile, Relais, Express)</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-red-600">
-                  -{formatCurrency(col.shopifyShipping)}
-                </td>
-              ))}
-            </tr>
-            <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2 text-red-600">Frais d'expédition Amazon (FBA / Transport)</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-red-600">
-                  -{formatCurrency(col.amazonShipping)}
-                </td>
-              ))}
-            </tr>
-
             {/* SECTION 4: DÉPENSES ADS */}
             <tr className="bg-slate-700 text-white font-extrabold">
-              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">Dépenses Ads</td>
+              <td className="px-6 py-2.5 uppercase tracking-wider text-xs">Dépenses Ads Totales</td>
               {sortedData.map((col) => (
                 <td key={col.date} className="px-4 py-2.5 text-center text-xs font-extrabold text-amber-300">
                   {formatCurrency(col.totalAdsSpend)}
@@ -301,15 +250,15 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               ))}
             </tr>
             <tr className="text-slate-700 text-[11px]">
-              <td className="px-8 py-2">Facebook</td>
+              <td className="px-8 py-2">Meta Ads (Facebook & Instagram)</td>
               {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-slate-700">
+                <td key={col.date} className="px-4 py-2 text-center text-slate-700 font-semibold">
                   {formatCurrency(col.facebookAds)}
                 </td>
               ))}
             </tr>
             <tr className="text-slate-700 text-[11px]">
-              <td className="px-8 py-2">Google</td>
+              <td className="px-8 py-2">Google Ads</td>
               {sortedData.map((col) => (
                 <td key={col.date} className="px-4 py-2 text-center text-slate-700">
                   {formatCurrency(col.googleAds)}
@@ -317,33 +266,43 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               ))}
             </tr>
             <tr className="text-slate-700 text-[11px]">
-              <td className="px-8 py-2">Amazon</td>
+              <td className="px-8 py-2">Amazon Ads</td>
               {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-slate-700 font-semibold">
+                <td key={col.date} className="px-4 py-2 text-center text-slate-700">
                   {formatCurrency(col.amazonAds)}
                 </td>
               ))}
             </tr>
 
-            {/* SECTION 5: ROAS & CPA */}
-            <tr className="bg-slate-50 font-black border-t border-slate-200">
-              <td className="px-6 py-3 font-black text-slate-900 text-xs uppercase">ROAS</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-3 text-center">
-                  <span className={`px-2.5 py-0.5 rounded-full font-black text-xs ${
-                    col.roas >= 4 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                    col.roas >= 2 ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                    'bg-slate-200 text-slate-700'
-                  }`}>
-                    {col.roas ? col.roas.toFixed(2) : '0.00'}
-                  </span>
-                </td>
-              ))}
+            {/* SECTION 5: ROAS (BASÉ SUR VENTES NETTES HT) & CPA */}
+            <tr className="bg-slate-900 text-white font-black border-t border-slate-700">
+              <td className="px-6 py-3 text-xs uppercase flex items-center gap-2">
+                <span>ROAS (Ventes Nettes HT / Ads)</span>
+                <span title="Calculé sur les Ventes Nettes Hors Taxes (HT) divisées par le budget Ads total" className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-indigo-500/30 text-indigo-300 rounded-full cursor-help">
+                  ?
+                </span>
+              </td>
+              {sortedData.map((col) => {
+                const netHt = (col.totalRevenue || 0) / vatFactor;
+                const ads = col.totalAdsSpend || 0;
+                const roasHt = ads > 0 ? (netHt / ads) : 0;
+                return (
+                  <td key={col.date} className="px-4 py-3 text-center">
+                    <span className={`px-2.5 py-0.5 rounded-full font-black text-xs ${
+                      roasHt >= 4 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                      roasHt >= 2 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                      'bg-slate-800 text-slate-400'
+                    }`}>
+                      {roasHt ? `${roasHt.toFixed(2)}x` : '0.00x'}
+                    </span>
+                  </td>
+                );
+              })}
             </tr>
-            <tr className="bg-slate-50 font-black border-t border-slate-200">
-              <td className="px-6 py-3 font-black text-slate-900 text-xs uppercase">CPA</td>
+            <tr className="bg-slate-900 text-white font-black border-t border-slate-800">
+              <td className="px-6 py-3 text-xs uppercase">CPA Moyen par Vente</td>
               {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-3 text-center text-slate-900 font-extrabold text-xs">
+                <td key={col.date} className="px-4 py-3 text-center text-amber-300 font-extrabold text-xs">
                   {col.cpa ? formatCurrency(col.cpa) : '0 €'}
                 </td>
               ))}

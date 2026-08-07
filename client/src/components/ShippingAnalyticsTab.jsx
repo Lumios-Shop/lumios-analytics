@@ -53,7 +53,7 @@ export default function ShippingAnalyticsTab({ data = [] }) {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">Analyse Détaillée des Modes de Livraison</h3>
-            <p className="text-xs text-slate-500 font-medium">Répartition Domicile, Mondial Relay (Point Relais) et Express 24h</p>
+            <p className="text-xs text-slate-500 font-medium">Proportions % et Coûts par expédition par type de transporteur</p>
           </div>
         </div>
 
@@ -69,8 +69,54 @@ export default function ShippingAnalyticsTab({ data = [] }) {
         </div>
       </div>
 
-      {/* VISUAL CARDS & BARS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* VISUAL DONUT CHART & CARDS */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* DONUT PROPORTION CHART */}
+        <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs flex flex-col items-center justify-center space-y-4">
+          <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">Proportion par Mode (%)</h4>
+          
+          <div className="relative w-36 h-36 flex items-center justify-center">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+              {/* Background circle */}
+              <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f1f5f9" strokeWidth="3.8" />
+              {/* Point Relais segment (teal) */}
+              <circle
+                cx="18" cy="18" r="15.915" fill="transparent" stroke="#0d9488" strokeWidth="4.2"
+                strokeDasharray={`${relaisPercent} ${100 - relaisPercent}`} strokeDashoffset="0"
+              />
+              {/* Domicile segment (emerald) */}
+              <circle
+                cx="18" cy="18" r="15.915" fill="transparent" stroke="#10b981" strokeWidth="4.2"
+                strokeDasharray={`${domicilePercent} ${100 - domicilePercent}`} strokeDashoffset={`${-relaisPercent}`}
+              />
+              {/* Express segment (amber) */}
+              <circle
+                cx="18" cy="18" r="15.915" fill="transparent" stroke="#f59e0b" strokeWidth="4.2"
+                strokeDasharray={`${expressPercent} ${100 - expressPercent}`} strokeDashoffset={`${-(relaisPercent + domicilePercent)}`}
+              />
+            </svg>
+            <div className="absolute text-center">
+              <span className="text-lg font-black text-slate-900">{formatNumber(totalOrders)}</span>
+              <span className="block text-[10px] text-slate-500 font-bold uppercase">Colis Total</span>
+            </div>
+          </div>
+
+          <div className="space-y-1 text-[11px] font-bold w-full">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-500"></span> Point Relais</span>
+              <span>{relaisPercent}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Domicile</span>
+              <span>{domicilePercent}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Express</span>
+              <span>{expressPercent}%</span>
+            </div>
+          </div>
+        </div>
+
         {/* CARTE 1: DOMICILE */}
         <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs space-y-4">
           <div className="flex items-center justify-between">
@@ -83,24 +129,20 @@ export default function ShippingAnalyticsTab({ data = [] }) {
             </span>
           </div>
 
-          <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
-            <div style={{ width: `${domicilePercent}%` }} className="bg-emerald-600 h-full rounded-full transition-all duration-500"></div>
+          <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl text-center">
+            <span className="block text-[10px] uppercase font-bold text-emerald-700">Coût par Expédition</span>
+            <span className="text-xl font-black text-emerald-900">5,50 € HT</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs pt-2">
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
             <div>
               <p className="text-slate-500 font-medium">Commandes</p>
-              <p className="text-lg font-black text-slate-900">{formatNumber(totals.domicileOrders)}</p>
+              <p className="text-base font-black text-slate-900">{formatNumber(totals.domicileOrders)}</p>
             </div>
             <div>
               <p className="text-slate-500 font-medium">Coût Logistique</p>
-              <p className="text-lg font-black text-emerald-600">{formatCurrency(totals.domicileCost)}</p>
+              <p className="text-base font-black text-emerald-600">{formatCurrency(totals.domicileCost)}</p>
             </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500 font-medium">
-            <span>Tarif moyen unitaire :</span>
-            <span className="font-bold text-slate-900">5,50 € / col.</span>
           </div>
         </div>
 
@@ -109,115 +151,57 @@ export default function ShippingAnalyticsTab({ data = [] }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-teal-700">
               <Package className="w-5 h-5" />
-              <h4 className="font-extrabold text-sm text-slate-900">Mondial Relay (Point Relais)</h4>
+              <h4 className="font-extrabold text-sm text-slate-900">Mondial Relay</h4>
             </div>
             <span className="text-xs font-black bg-teal-50 text-teal-700 px-2.5 py-0.5 rounded-full border border-teal-200">
               {relaisPercent}%
             </span>
           </div>
 
-          <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
-            <div style={{ width: `${relaisPercent}%` }} className="bg-teal-500 h-full rounded-full transition-all duration-500"></div>
+          <div className="p-3 bg-teal-50/70 border border-teal-100 rounded-xl text-center">
+            <span className="block text-[10px] uppercase font-bold text-teal-700">Coût par Expédition</span>
+            <span className="text-xl font-black text-teal-900">3,50 € HT</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs pt-2">
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
             <div>
               <p className="text-slate-500 font-medium">Commandes</p>
-              <p className="text-lg font-black text-slate-900">{formatNumber(totals.relaisOrders)}</p>
+              <p className="text-base font-black text-slate-900">{formatNumber(totals.relaisOrders)}</p>
             </div>
             <div>
               <p className="text-slate-500 font-medium">Coût Logistique</p>
-              <p className="text-lg font-black text-teal-600">{formatCurrency(totals.relaisCost)}</p>
+              <p className="text-base font-black text-teal-600">{formatCurrency(totals.relaisCost)}</p>
             </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500 font-medium">
-            <span>Tarif moyen unitaire :</span>
-            <span className="font-bold text-slate-900">3,50 € / col.</span>
           </div>
         </div>
 
-        {/* CARTE 3: EXPRESS 24H */}
+        {/* CARTE 3: EXPRESS */}
         <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-amber-700">
               <Zap className="w-5 h-5" />
-              <h4 className="font-extrabold text-sm text-slate-900">Livraison Express 24h</h4>
+              <h4 className="font-extrabold text-sm text-slate-900">Livraison Express</h4>
             </div>
             <span className="text-xs font-black bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200">
               {expressPercent}%
             </span>
           </div>
 
-          <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
-            <div style={{ width: `${expressPercent}%` }} className="bg-amber-500 h-full rounded-full transition-all duration-500"></div>
+          <div className="p-3 bg-amber-50/70 border border-amber-100 rounded-xl text-center">
+            <span className="block text-[10px] uppercase font-bold text-amber-700">Coût par Expédition</span>
+            <span className="text-xl font-black text-amber-900">9,90 € HT</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs pt-2">
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
             <div>
               <p className="text-slate-500 font-medium">Commandes</p>
-              <p className="text-lg font-black text-slate-900">{formatNumber(totals.expressOrders)}</p>
+              <p className="text-base font-black text-slate-900">{formatNumber(totals.expressOrders)}</p>
             </div>
             <div>
               <p className="text-slate-500 font-medium">Coût Logistique</p>
-              <p className="text-lg font-black text-amber-600">{formatCurrency(totals.expressCost)}</p>
+              <p className="text-base font-black text-amber-600">{formatCurrency(totals.expressCost)}</p>
             </div>
           </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500 font-medium">
-            <span>Tarif moyen unitaire :</span>
-            <span className="font-bold text-slate-900">9,90 € / col.</span>
-          </div>
-        </div>
-      </div>
-
-      {/* TABLEAU DE COÛTS LOGISTIQUES */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
-        <h4 className="text-sm font-extrabold text-slate-900 mb-4">Tableau d'Impact Logistique sur les Marges</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 uppercase font-extrabold border-b border-slate-200">
-                <th className="py-3 px-4">Mode d'Expédition</th>
-                <th className="py-3 px-4 text-center">Part (%)</th>
-                <th className="py-3 px-4 text-center">Nombre de Colis</th>
-                <th className="py-3 px-4 text-right">CA Généré</th>
-                <th className="py-3 px-4 text-right">Frais d'Expédition Totaux</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              <tr>
-                <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
-                  Livraison à Domicile (Colissimo / Standard)
-                </td>
-                <td className="py-3.5 px-4 text-center font-bold text-emerald-600">{domicilePercent}%</td>
-                <td className="py-3.5 px-4 text-center text-slate-800">{formatNumber(totals.domicileOrders)}</td>
-                <td className="py-3.5 px-4 text-right font-bold text-slate-900">{formatCurrency(totals.domicileRevenue)}</td>
-                <td className="py-3.5 px-4 text-right text-amber-600 font-bold">-{formatCurrency(totals.domicileCost)}</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block"></span>
-                  Mondial Relay (Point Relais)
-                </td>
-                <td className="py-3.5 px-4 text-center font-bold text-teal-600">{relaisPercent}%</td>
-                <td className="py-3.5 px-4 text-center text-slate-800">{formatNumber(totals.relaisOrders)}</td>
-                <td className="py-3.5 px-4 text-right font-bold text-slate-900">{formatCurrency(totals.relaisRevenue)}</td>
-                <td className="py-3.5 px-4 text-right text-amber-600 font-bold">-{formatCurrency(totals.relaisCost)}</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
-                  Livraison Express 24h (Chronopost)
-                </td>
-                <td className="py-3.5 px-4 text-center font-bold text-amber-600">{expressPercent}%</td>
-                <td className="py-3.5 px-4 text-center text-slate-800">{formatNumber(totals.expressOrders)}</td>
-                <td className="py-3.5 px-4 text-right font-bold text-slate-900">{formatCurrency(totals.expressRevenue)}</td>
-                <td className="py-3.5 px-4 text-right text-amber-600 font-bold">-{formatCurrency(totals.expressCost)}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

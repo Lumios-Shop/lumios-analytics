@@ -113,18 +113,6 @@ export default function Dashboard({ refreshTrigger }) {
         </button>
 
         <button
-          onClick={() => setActiveTab('payments')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'payments'
-              ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/80'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" />
-          Paiements (PayPal, CB, Apple Pay)
-        </button>
-
-        <button
           onClick={() => setActiveTab('shipping')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
             activeTab === 'shipping'
@@ -133,7 +121,7 @@ export default function Dashboard({ refreshTrigger }) {
           }`}
         >
           <Truck className="w-4 h-4" />
-          Livraisons (Domicile, Relais, Express)
+          Livraisons & Transport (Domicile, Relais, Express)
         </button>
 
         <button
@@ -178,28 +166,17 @@ export default function Dashboard({ refreshTrigger }) {
                 <SalesChart data={salesData} granularity={filter.granularity} />
               </div>
 
-              {/* ANLYSE UNITAIRE : COMBIEN COÛTE 1 VENTE (SHOPIFY VS AMAZON & CPA/ROAS) */}
-              <UnitEconomicsCard salesData={monthlySalesData.length > 0 ? monthlySalesData : salesData} />
-
               {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L (STRICTEMENT MENSUEL) */}
               <PerformancePnlTable data={monthlySalesData} granularity="monthly" />
-
-              {/* DETAILS TABLE */}
-              <SalesTable data={salesData} granularity={filter.granularity} />
             </>
           )}
 
-          {/* ONGLET 2: REPARTITION DES PAIEMENTS */}
-          {activeTab === 'payments' && (
-            <PaymentsAnalyticsTab data={salesData} />
-          )}
-
-          {/* ONGLET 3: REPARTITION DES LIVRAISONS */}
+          {/* ONGLET 2: REPARTITION ET COÛTS DE LIVRAISON */}
           {activeTab === 'shipping' && (
             <ShippingAnalyticsTab data={salesData} />
           )}
 
-          {/* ONGLET 4: MARGE NETTE ET TVA */}
+          {/* ONGLET 3: CALCULATEUR DE MARGE NETTE & TVA */}
           {activeTab === 'margin' && (
             <MarginCalculatorTab data={salesData} />
           )}
