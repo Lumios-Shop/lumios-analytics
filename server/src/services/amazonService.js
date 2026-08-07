@@ -98,7 +98,8 @@ export async function getAmazonSales(startDate, endDate) {
       const sku = 'AMAZON-DEFAULT';
       const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
       const revenue = parseFloat(order.OrderTotal?.Amount || 0);
-      const fees = (revenue * 0.15) + (order.FulfillmentChannel === 'AFN' ? 4.0 * qty : 0);
+      const referralFee = revenue * 0.15; // Commission Marketplace 15%
+      const fbaShippingCost = order.FulfillmentChannel === 'AFN' ? (4.25 * qty) : 0.0; // Frais d'expédition Amazon FBA
       const discounts = parseFloat(order.PromotionDiscountAmount?.Amount || 0);
       const returns = order.OrderStatus === 'Canceled' ? revenue : 0;
 
@@ -115,6 +116,7 @@ export async function getAmazonSales(startDate, endDate) {
           salesCount: 0,
           revenue: 0,
           fees: 0,
+          shippingCost: 0,
           discounts: 0,
           returns: 0
         };
@@ -123,7 +125,8 @@ export async function getAmazonSales(startDate, endDate) {
       dailySkuMap[key].orderCount += 1;
       dailySkuMap[key].salesCount += qty;
       dailySkuMap[key].revenue += revenue;
-      dailySkuMap[key].fees += fees;
+      dailySkuMap[key].fees += referralFee;
+      dailySkuMap[key].shippingCost += fbaShippingCost;
       dailySkuMap[key].discounts += discounts;
       dailySkuMap[key].returns += returns;
     }
@@ -160,10 +163,9 @@ function generateMockAmazonData(startDate, endDate) {
         const unitPrice = idx === 0 ? 34.90 : idx === 1 ? 19.90 : 59.90;
         const revenue = count * unitPrice;
         
-        // Frais Amazon : 15% commission + 4.50€ de frais de livraison FBA par unité vendue
+        // Frais Amazon : 15% commission Marketplace + 4.50€ de frais de livraison FBA par unité vendue
         const referralFee = revenue * 0.15;
         const fbaFee = count * 4.50;
-        const fees = referralFee + fbaFee;
 
         data.push({
           date: dateStr,
@@ -172,7 +174,8 @@ function generateMockAmazonData(startDate, endDate) {
           source: 'amazon',
           salesCount: count,
           revenue: parseFloat(revenue.toFixed(2)),
-          fees: parseFloat(fees.toFixed(2))
+          fees: parseFloat(referralFee.toFixed(2)),
+          shippingCost: parseFloat(fbaFee.toFixed(2))
         });
       }
     });

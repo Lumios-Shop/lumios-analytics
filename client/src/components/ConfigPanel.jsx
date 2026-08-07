@@ -495,12 +495,12 @@ export default function ConfigPanel({ onConfigUpdated }) {
         </div>
       )}
 
-      {/* ONGLET 3 : COÛTS D'EXPÉDITION (DOMICILE VS RELAIS) */}
+      {/* ONGLET 3 : COÛTS D'EXPÉDITION (SHOPIFY & AMAZON FBA) */}
       {activeTab === 'shipping' && (
         <div className="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs space-y-6">
           <div>
             <h4 className="text-base font-extrabold text-slate-900">Coûts de Livraison & Expédition</h4>
-            <p className="text-xs text-slate-500 font-medium">Définissez le coût réel moyen de livraison supporté par votre boutique selon le mode d'expédition (Domicile vs Point Relais)</p>
+            <p className="text-xs text-slate-500 font-medium">Définissez le coût réel moyen de livraison supporté par votre boutique Shopify et les frais d'expédition Amazon FBA</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -528,6 +528,30 @@ export default function ConfigPanel({ onConfigUpdated }) {
                 </div>
               </div>
             ))}
+
+            {/* EXPÉDITION AMAZON FBA / TRANSPORT */}
+            <div className="border border-amber-200/80 rounded-xl p-5 space-y-4 bg-amber-50/40">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-amber-600" />
+                  <h5 className="font-extrabold text-slate-900 text-sm">Frais d'Expédition Amazon (FBA / Transport)</h5>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
+                  AMAZON-FBA
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Frais FBA par Produit Vendu (€ HT)</label>
+                <input
+                  type="number"
+                  step="0.10"
+                  defaultValue="4.25"
+                  className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[11px] text-slate-500 mt-1 font-medium">Frais fixes prélevés par Amazon par article expédié via FBA.</p>
+              </div>
+            </div>
           </div>
         </div>
       )}
