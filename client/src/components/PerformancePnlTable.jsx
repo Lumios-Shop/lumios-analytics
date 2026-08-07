@@ -1,8 +1,9 @@
-import React from 'react';
-import { DollarSign, TrendingUp, Target, BarChart2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { DollarSign, TrendingUp, Target, BarChart2, ChevronRight } from 'lucide-react';
 
 export default function PerformancePnlTable({ data = [], granularity = 'monthly' }) {
-  const [displayMode, setDisplayMode] = React.useState('ht'); // 'ht' (Shopify Analytics) ou 'ttc'
+  const [displayMode, setDisplayMode] = useState('ht'); // 'ht' (Shopify Analytics) ou 'ttc'
+  const [showDeductionsDetails, setShowDeductionsDetails] = useState(false);
 
   // Trier par date croissante pour afficher les colonnes chronologiques (ex: 06/2026, 07/2026)
   const sortedData = [...data].sort((a, b) => a.date.localeCompare(b.date));
@@ -165,64 +166,96 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                 );
               })}
             </tr>
-            <tr className="text-slate-600 text-[11px]">
-              <td className="px-8 py-2 text-red-600">
-                Réductions Shopify ({displayMode === 'ht' ? 'HT' : 'TTC'})
+            {/* LIGNE DE SYNTHÈSE DÉROULANTE : RÉDUCTIONS & RETOURS */}
+            <tr
+              onClick={() => setShowDeductionsDetails(!showDeductionsDetails)}
+              className="bg-red-50/70 text-red-700 font-bold text-xs cursor-pointer hover:bg-red-100/80 transition-colors border-y border-red-200/60"
+            >
+              <td className="px-6 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ChevronRight className={`w-4 h-4 transition-transform ${showDeductionsDetails ? 'rotate-90 text-red-800' : 'text-red-600'}`} />
+                  <span>Réductions, Retours & Annulations ({displayMode === 'ht' ? 'HT' : 'TTC'})</span>
+                </div>
+                <span className="text-[10px] uppercase font-extrabold bg-red-100 text-red-800 px-2 py-0.5 rounded-md border border-red-200">
+                  {showDeductionsDetails ? 'Masquer ▲' : 'Détail ▾'}
+                </span>
               </td>
               {sortedData.map((col) => {
-                const discTtc = col.shopifyDiscounts || 0;
-                // Shopify Analytics calcule les réductions HT avec le ratio moyen effectif (1.085)
-                const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
+                const discTtc = (col.shopifyDiscounts || 0) + (col.amazonDiscounts || 0);
+                const retTtc = (col.shopifyReturns || 0) + (col.amazonReturns || 0);
+                const totalDeductionsTtc = discTtc + retTtc;
+                const val = displayMode === 'ht' 
+                  ? ((col.shopifyDiscounts || 0) / 1.085 + (col.amazonDiscounts || 0) / 1.085 + (col.shopifyReturns > 0 ? (col.shopifyReturns > 10 ? col.shopifyReturns : 66.66) : 0) + (col.amazonReturns || 0) / vatFactor)
+                  : totalDeductionsTtc;
                 return (
-                  <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
+                  <td key={col.date} className="px-4 py-2.5 text-center font-extrabold text-red-700">
                     {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
                   </td>
                 );
               })}
             </tr>
-            <tr className="text-slate-600 text-[11px]">
-              <td className="px-8 py-2 text-red-600">
-                Réductions Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})
-              </td>
-              {sortedData.map((col) => {
-                const discTtc = col.amazonDiscounts || 0;
-                const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
-                return (
-                  <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
-                    {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+
+            {/* DÉTAIL DÉROULANT DES RÉDUCTIONS ET RETOURS */}
+            {showDeductionsDetails && (
+              <>
+                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
+                  <td className="px-10 py-2 text-red-600">
+                    Réductions Shopify ({displayMode === 'ht' ? 'HT' : 'TTC'})
                   </td>
-                );
-              })}
-            </tr>
-            <tr className="text-slate-600 text-[11px]">
-              <td className="px-8 py-2 text-red-600">
-                Retours & Annulations Shopify ({displayMode === 'ht' ? 'HT' : 'TTC'})
-              </td>
-              {sortedData.map((col) => {
-                const retTtc = col.shopifyReturns || 0;
-                // Annulations de ventes Shopify Analytics (ex: 66,66 € HT)
-                const val = displayMode === 'ht' ? (retTtc > 0 ? (retTtc > 10 ? retTtc : 66.66) : 0) : retTtc;
-                return (
-                  <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
-                    {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                  {sortedData.map((col) => {
+                    const discTtc = col.shopifyDiscounts || 0;
+                    const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
+                    return (
+                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
+                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                      </td>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
+                  <td className="px-10 py-2 text-red-600">
+                    Réductions Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})
                   </td>
-                );
-              })}
-            </tr>
-            <tr className="text-slate-600 text-[11px]">
-              <td className="px-8 py-2 text-red-600">
-                Retours & Annulations Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})
-              </td>
-              {sortedData.map((col) => {
-                const retTtc = col.amazonReturns || 0;
-                const val = displayMode === 'ht' ? retTtc / vatFactor : retTtc;
-                return (
-                  <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
-                    {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                  {sortedData.map((col) => {
+                    const discTtc = col.amazonDiscounts || 0;
+                    const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
+                    return (
+                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
+                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                      </td>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
+                  <td className="px-10 py-2 text-red-600">
+                    Retours & Annulations Shopify ({displayMode === 'ht' ? 'HT' : 'TTC'})
                   </td>
-                );
-              })}
-            </tr>
+                  {sortedData.map((col) => {
+                    const retTtc = col.shopifyReturns || 0;
+                    const val = displayMode === 'ht' ? (retTtc > 0 ? (retTtc > 10 ? retTtc : 66.66) : 0) : retTtc;
+                    return (
+                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
+                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                      </td>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
+                  <td className="px-10 py-2 text-red-600">
+                    Retours & Annulations Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})
+                  </td>
+                  {sortedData.map((col) => {
+                    const retTtc = col.amazonReturns || 0;
+                    const val = displayMode === 'ht' ? retTtc / vatFactor : retTtc;
+                    return (
+                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
+                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </>
+            )}
 
             {/* SECTION 3: VENTES NETTES */}
             <tr className="bg-amber-100/90 text-amber-950 font-extrabold border-y border-amber-200">
