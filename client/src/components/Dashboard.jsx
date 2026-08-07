@@ -15,31 +15,49 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
 export default function Dashboard({ refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'payments', 'shipping', 'margin'
-  const [filter, setFilter] = useState({ startDate: '', endDate: '', granularity: 'daily' });
+  const get24MonthsDefaultDates = () => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const twentyFourMonthsAgo = new Date();
+    twentyFourMonthsAgo.setMonth(today.getMonth() - 24);
+    return {
+      startDate: twentyFourMonthsAgo.toISOString().split('T')[0],
+      endDate: todayStr,
+      granularity: 'monthly'
+    };
+  };
+
+  const [filter, setFilter] = useState(get24MonthsDefaultDates());
   const [salesData, setSalesData] = useState([]);
   const [monthlySalesData, setMonthlySalesData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [force, setForce] = useState(false);
 
-  const fetchSalesData = async (startDate, endDate, granularity = 'daily', forceRefresh = false) => {
-    if (!startDate || !endDate) return;
+  const fetchSalesData = async (startDate, endDate, granularity = 'monthly', forceRefresh = false) => {
+    if (!startDate || !endDate) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     try {
-      const [res, resMonthly] = await Promise.all([
-        fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=${granularity}${forceRefresh ? '&force=true' : ''}`),
-        fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=monthly${forceRefresh ? '&force=true' : ''}`)
-      ]);
-
+      const res = await fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=${granularity}${forceRefresh ? '&force=true' : ''}`);
       if (!res.ok) throw new Error('Impossible de charger les données de ventes.');
       const data = await res.json();
-      const monthlyData = await resMonthly.json();
+
+      let monthlyData = data;
+      if (granularity !== 'monthly') {
+        const resMonthly = await fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=monthly${forceRefresh ? '&force=true' : ''}`);
+        if (resMonthly.ok) monthlyData = await resMonthly.json();
+      }
+
       setSalesData(data);
       setMonthlySalesData(monthlyData);
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      setError(err.message || 'Erreur lors du chargement des données.');
     } finally {
       setLoading(false);
     }
