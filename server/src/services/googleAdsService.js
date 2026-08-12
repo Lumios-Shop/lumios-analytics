@@ -55,7 +55,7 @@ export async function getGoogleAdsSpend(startDate, endDate) {
     }
 
     const searchRes = await axios.post(
-      `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:searchStream`,
+      `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`,
       { query },
       { headers }
     );
@@ -75,8 +75,7 @@ export async function getGoogleAdsSpend(startDate, endDate) {
 
     return results;
   } catch (error) {
-    const errorMsg = error.response?.data?.error?.message || error.response?.data?.error_description || error.message;
-    console.error("Erreur lors de la récupération des dépenses Google Ads :", errorMsg);
+    console.error('Erreur lors de la récupération des dépenses Google Ads :', error.response?.data || error.message);
     return [];
   }
 }

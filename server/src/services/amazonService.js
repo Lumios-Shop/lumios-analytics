@@ -54,9 +54,9 @@ export async function getAmazonSales(startDate, endDate) {
   try {
     const accessToken = await getLwaAccessToken();
 
-    const minDate = new Date(`${startDate}T00:00:00Z`).toISOString();
+    const minDate = new Date(`${startDate}T00:00:00+02:00`).toISOString();
     const nowMinus3Min = new Date(Date.now() - 3 * 60 * 1000);
-    const requestedEnd = new Date(`${endDate}T23:59:59Z`);
+    const requestedEnd = new Date(`${endDate}T23:59:59+02:00`);
     const maxDate = new Date(Math.min(requestedEnd.getTime(), nowMinus3Min.getTime())).toISOString();
 
     let orders = [];

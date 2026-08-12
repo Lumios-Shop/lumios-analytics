@@ -31,8 +31,8 @@ export async function getShopifySales(startDate, endDate) {
   }
 
   try {
-    const minDate = new Date(`${startDate}T00:00:00Z`).toISOString();
-    const maxDate = new Date(`${endDate}T23:59:59Z`).toISOString();
+    const minDate = new Date(`${startDate}T00:00:00+02:00`).toISOString();
+    const maxDate = new Date(`${endDate}T23:59:59+02:00`).toISOString();
 
     let allOrders = [];
     let nextUrl = `https://${SHOP_NAME}/admin/api/2024-04/orders.json`;
@@ -40,7 +40,7 @@ export async function getShopifySales(startDate, endDate) {
       created_at_min: minDate,
       created_at_max: maxDate,
       status: 'any',
-      fields: 'id,name,created_at,line_items,total_price,total_discounts,current_total_discounts,discount_codes,discount_applications,refunds,cancelled_at,payment_gateway_names,shipping_lines',
+      fields: 'id,name,created_at,line_items,total_price,total_discounts,current_total_discounts,discount_codes,discount_applications,refunds,cancelled_at,financial_status,payment_gateway_names,shipping_lines',
       limit: 250
     };
 
@@ -109,8 +109,8 @@ function processShopifyOrders(orders) {
       isExpress = title.includes('express') || title.includes('24h') || title.includes('chrono');
       isRelais = !isExpress && (title.includes('relais') || title.includes('point') || title.includes('mondial') || title.includes('pickup'));
       
-      // Express: 9,90 € | Domicile: 5,50 € | Point Relais: 3,50 €
-      shippingCost = isExpress ? 9.90 : isRelais ? 3.50 : 5.50;
+      // Express: 12,99 € | Domicile: 5,50 € | Point Relais: 3,50 €
+      shippingCost = isExpress ? 12.99 : isRelais ? 3.50 : 5.50;
     }
 
     const lineItemsSubtotal = order.line_items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.quantity || 0)), 0) || 1;
