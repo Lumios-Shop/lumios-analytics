@@ -21,11 +21,9 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes de cache pour le jour J
 export async function syncAndGetSalesData(startDate, endDate, forceRefresh = false, granularity = 'daily') {
   const db = getDb();
   
-  // 1. Déterminer les dates dans la plage demandée
   const requestedDates = [];
   let current = new Date(startDate);
   const end = new Date(endDate);
-  const todayStr = new Date().toISOString().split('T')[0];
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
@@ -33,74 +31,34 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     current.setDate(current.getDate() + 1);
   }
 
-  // 2. Vérifier les dates déjà présentes dans le cache SQLite (sauf aujourd'hui qui peut être obsolète)
-  const cachedDatesRows = await db.all(
-    `SELECT DISTINCT date FROM daily_sku_sales WHERE date BETWEEN ? AND ?`,
-    [startDate, endDate]
-  );
-  const cachedDates = new Set(cachedDatesRows.map(row => row.date));
+  console.log(`Synchronisation en direct des API Shopify, Amazon, Meta Ads, Amazon Ads et Google Ads pour la période : ${startDate} au ${endDate}`);
+  
+  try {
+    const [shopifyData, amazonData, metaAdsData, amazonAdsData, googleAdsData] = await Promise.all([
+      getShopifySales(startDate, endDate),
+      getAmazonSales(startDate, endDate),
+      getMetaAdsSpend(startDate, endDate),
+      getAmazonAdsSpend(startDate, endDate),
+      getGoogleAdsSpend(startDate, endDate)
+    ]);
 
-  // 3. Vérifier si aujourd'hui doit être rafraîchi (TTL)
-  let todayNeedsRefresh = false;
-  if (requestedDates.includes(todayStr)) {
-    const lastSyncRow = await db.get(`SELECT value FROM settings WHERE key = 'last_sync_today'`);
-    const lastSyncTime = lastSyncRow ? parseInt(lastSyncRow.value) : 0;
-    const now = Date.now();
-
-    if (now - lastSyncTime > CACHE_TTL_MS || forceRefresh) {
-      todayNeedsRefresh = true;
-    }
-  }
-
-  // Trouver les dates manquantes
-  const missingDates = requestedDates.filter(d => !cachedDates.has(d) && d !== todayStr);
-
-  // 4. Lancer la synchronisation si des dates manquent ou si aujourd'hui est expiré ou si forceRefresh est vrai
-  if (missingDates.length > 0 || todayNeedsRefresh || forceRefresh) {
-    console.log(`Déclenchement de la synchronisation. Dates manquantes : ${missingDates.length}, Rafraîchissement aujourd'hui : ${todayNeedsRefresh}, Force : ${forceRefresh}`);
-    
-    // Déterminer la plage de dates à requêter aux API
-    const datesToSync = [...missingDates];
-    if (todayNeedsRefresh || (forceRefresh && requestedDates.includes(todayStr))) {
-      datesToSync.push(todayStr);
+    if (metaAdsData && metaAdsData.length > 0) {
+      await saveBatchAdSpends(metaAdsData);
     }
 
-    if (datesToSync.length > 0) {
-      datesToSync.sort();
-      const apiStart = datesToSync[0];
-      const apiEnd = datesToSync[datesToSync.length - 1];
+    if (amazonAdsData && amazonAdsData.length > 0) {
+      await saveBatchAdSpends(amazonAdsData);
+    }
 
-      console.log(`Appel des API Shopify, Amazon, Meta Ads et Google Ads de ${apiStart} à ${apiEnd}`);
-      
-      try {
-        const [shopifyData, amazonData, metaAdsData, amazonAdsData, googleAdsData] = await Promise.all([
-          getShopifySales(apiStart, apiEnd),
-          getAmazonSales(apiStart, apiEnd),
-          getMetaAdsSpend(apiStart, apiEnd),
-          getAmazonAdsSpend(apiStart, apiEnd),
-          getGoogleAdsSpend(apiStart, apiEnd)
-        ]);
+    if (googleAdsData && googleAdsData.length > 0) {
+      await saveBatchAdSpends(googleAdsData);
+    }
 
-        if (metaAdsData && metaAdsData.length > 0) {
-          await saveBatchAdSpends(metaAdsData);
-          console.log(`Synchronisation de ${metaAdsData.length} jours de dépenses Meta Ads dans SQLite.`);
-        }
-
-        if (amazonAdsData && amazonAdsData.length > 0) {
-          await saveBatchAdSpends(amazonAdsData);
-          console.log(`Synchronisation de ${amazonAdsData.length} jours de dépenses Amazon Ads dans SQLite.`);
-        }
-
-        if (googleAdsData && googleAdsData.length > 0) {
-          await saveBatchAdSpends(googleAdsData);
-          console.log(`Synchronisation de ${googleAdsData.length} jours de dépenses Google Ads dans SQLite.`);
-        }
-
-        // Supprimer les données obsolètes (mock) sur la période synchronisée
-        await db.run(
-          `DELETE FROM daily_sku_sales WHERE date BETWEEN ? AND ?`,
-          [apiStart, apiEnd]
-        );
+    // Supprimer les données obsolètes ou de simulation sur la période synchronisée
+    await db.run(
+      `DELETE FROM daily_sku_sales WHERE date BETWEEN ? AND ?`,
+      [startDate, endDate]
+    );
 
         const insertStmt = await db.prepare(`
           INSERT OR REPLACE INTO daily_sku_sales (
@@ -160,17 +118,13 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
         await insertStmt.finalize();
         await insertCostStmt.finalize();
 
-        if (datesToSync.includes(todayStr)) {
-          await db.run(
-            `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
-            [Date.now().toString()]
-          );
-        }
+        await db.run(
+          `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
+          [Date.now().toString()]
+        );
       } catch (err) {
         console.error("Erreur lors de la synchronisation avec les API :", err);
       }
-    }
-  }
 
   // 5. Récupérer les données agrégées et calculer la marge avec les COGS, frais d'expédition et dépenses Ads
   const salesQuery = `
