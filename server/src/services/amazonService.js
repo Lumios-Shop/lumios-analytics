@@ -97,13 +97,15 @@ export async function getAmazonSales(startDate, endDate) {
       const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
       const sku = 'AMAZON-DEFAULT';
       const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
-      const revenue = parseFloat(order.OrderTotal?.Amount || 0);
+      const isCanceled = order.OrderStatus === 'Canceled';
+
+      // Pour les commandes Pending ou Canceled sans montant fourni par l'API Orders, supputer le montant unitaire (40,00€ par défaut)
+      const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
+      const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
       const referralFee = revenue * 0.15; // Commission Marketplace 15%
       const fbaShippingCost = order.FulfillmentChannel === 'AFN' ? (4.25 * qty) : 0.0; // Frais d'expédition Amazon FBA
       const discounts = parseFloat(order.PromotionDiscountAmount?.Amount || 0);
-      const returns = order.OrderStatus === 'Canceled' ? revenue : 0;
-
-      if (order.OrderStatus === 'Canceled') continue;
+      const returns = isCanceled ? revenue : 0;
 
       const key = `${orderDate}_${sku}`;
       if (!dailySkuMap[key]) {
@@ -124,11 +126,15 @@ export async function getAmazonSales(startDate, endDate) {
 
       dailySkuMap[key].orderCount += 1;
       dailySkuMap[key].salesCount += qty;
-      dailySkuMap[key].revenue += revenue;
-      dailySkuMap[key].fees += referralFee;
-      dailySkuMap[key].shippingCost += fbaShippingCost;
-      dailySkuMap[key].discounts += discounts;
-      dailySkuMap[key].returns += returns;
+
+      if (!isCanceled) {
+        dailySkuMap[key].revenue += revenue;
+        dailySkuMap[key].fees += referralFee;
+        dailySkuMap[key].shippingCost += fbaShippingCost;
+        dailySkuMap[key].discounts += discounts;
+      } else {
+        dailySkuMap[key].returns += returns;
+      }
     }
 
     return Object.values(dailySkuMap);
