@@ -8,17 +8,16 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 /**
- * Service pour interagir avec l'API REST Google Ads et récupérer les dépenses quotidiennes.
+ * Service pour interagir avec l'API REST Google Ads (v26) et récupérer les dépenses quotidiennes.
  */
 export async function getGoogleAdsSpend(startDate, endDate) {
   const customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/[^0-9]/g, '');
   const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  const refreshToken = (process.env.GOOGLE_ADS_REFRESH_TOKEN || '').trim();
 
   if (!customerId || !developerToken || !clientId || !clientSecret || !refreshToken) {
-    // Si l'un des paramètres Google Ads est manquant, retourner un tableau vide
     return [];
   }
 
@@ -34,31 +33,53 @@ export async function getGoogleAdsSpend(startDate, endDate) {
     });
 
     const accessToken = tokenRes.data.access_token;
+    if (!accessToken) {
+      throw new Error("Impossible d'obtenir le jeton d'accès OAuth Google.");
+    }
 
-    // 2. Requête GoogleAdsField / GAQL query pour obtenir les coûts quotidiens
+    // 2. Requête GAQL pour agréger les coûts par date
     const query = `
       SELECT segments.date, metrics.cost_micros 
       FROM customer 
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `;
 
-    const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/[^0-9]/g, '');
+    const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').replace(/[^0-9]/g, '');
 
-    const headers = {
-      'Authorization': `Bearer ${accessToken}`,
-      'developer-token': developerToken,
-      'Content-Type': 'application/json'
+    const makeHeaders = (useLoginId = true) => {
+      const h = {
+        'Authorization': `Bearer ${accessToken}`,
+        'developer-token': developerToken,
+        'Content-Type': 'application/json'
+      };
+      if (useLoginId && loginCustomerId && loginCustomerId !== customerId) {
+        h['login-customer-id'] = loginCustomerId;
+      }
+      return h;
     };
 
-    if (loginCustomerId) {
-      headers['login-customer-id'] = loginCustomerId;
-    }
+    let searchRes;
+    const apiVersion = 'v26';
 
-    const searchRes = await axios.post(
-      `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`,
-      { query },
-      { headers }
-    );
+    try {
+      // Tentative avec le login-customer-id s'il est spécifié
+      searchRes = await axios.post(
+        `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
+        { query },
+        { headers: makeHeaders(true) }
+      );
+    } catch (firstErr) {
+      // Si échec lié au login-customer-id, tenter directement sans login-customer-id
+      if (loginCustomerId) {
+        searchRes = await axios.post(
+          `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
+          { query },
+          { headers: makeHeaders(false) }
+        );
+      } else {
+        throw firstErr;
+      }
+    }
 
     const results = [];
     const stream = searchRes.data || [];
@@ -75,7 +96,12 @@ export async function getGoogleAdsSpend(startDate, endDate) {
 
     return results;
   } catch (error) {
-    console.error('Erreur lors de la récupération des dépenses Google Ads :', error.response?.data || error.message);
+    const errorDetails = error.response?.data?.error?.details?.[0]?.errors?.[0]?.message 
+      || error.response?.data?.error?.message 
+      || error.response?.data 
+      || error.message;
+
+    console.error('Erreur lors de la récupération des dépenses Google Ads :', typeof errorDetails === 'object' ? JSON.stringify(errorDetails) : errorDetails);
     return [];
   }
 }
