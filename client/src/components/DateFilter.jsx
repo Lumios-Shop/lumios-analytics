@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar } from 'lucide-react';
 
 const PRESETS = [
-  { id: 'today', label: "Aujourd'hui" },
+  { id: 'today', label: "Aujourd'hui (En direct)" },
   { id: 'yesterday', label: 'Hier' },
   { id: '7days', label: '7 derniers jours' },
   { id: '30days', label: '30 derniers jours' },
@@ -30,7 +30,7 @@ export default function DateFilter({ onFilterChange }) {
 
   const getPresetDates = (presetId) => {
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 
     switch (presetId) {
       case 'today':
@@ -38,14 +38,14 @@ export default function DateFilter({ onFilterChange }) {
       case 'yesterday': {
         const yesterday = new Date();
         yesterday.setDate(today.getDate() - 1);
-        const yestStr = yesterday.toISOString().split('T')[0];
+        const yestStr = yesterday.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
         return { startDate: yestStr, endDate: yestStr };
       }
       case '7days': {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(today.getDate() - 6);
         return {
-          startDate: sevenDaysAgo.toISOString().split('T')[0],
+          startDate: sevenDaysAgo.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }),
           endDate: todayStr
         };
       }
@@ -53,7 +53,7 @@ export default function DateFilter({ onFilterChange }) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(today.getDate() - 29);
         return {
-          startDate: thirtyDaysAgo.toISOString().split('T')[0],
+          startDate: thirtyDaysAgo.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }),
           endDate: todayStr
         };
       }

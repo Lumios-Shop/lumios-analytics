@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign } from 'lucide-react';
+import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign, FileSpreadsheet, Copy, Check } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
@@ -39,6 +39,12 @@ export default function ConfigPanel({ onConfigUpdated }) {
     amazon: '718.39'
   });
   const [savingAds, setSavingAds] = useState(false);
+
+  // État pour Google Sheet Ads Sync
+  const [googleSheetUrl, setGoogleSheetUrl] = useState('');
+  const [savingSheet, setSavingSheet] = useState(false);
+  const [sheetFeedback, setSheetFeedback] = useState(null);
+  const [copiedScript, setCopiedScript] = useState(false);
 
 
 
@@ -84,11 +90,52 @@ export default function ConfigPanel({ onConfigUpdated }) {
     }
   };
 
+  // Charger URL Google Sheet
+  const fetchGoogleSheetConfig = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/config/google-ads-sheet`);
+      if (res.ok) {
+        const data = await res.json();
+        setGoogleSheetUrl(data.sheetUrl || '');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
     fetchPaymentFees();
     fetchShippingCosts();
+    fetchGoogleSheetConfig();
   }, []);
+
+  // Sauvegarder Google Sheet URL
+  const handleSaveGoogleSheet = async (e) => {
+    e.preventDefault();
+    setSavingSheet(true);
+    setSheetFeedback(null);
+    try {
+      const res = await fetch(`${API_BASE}/config/google-ads-sheet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: googleSheetUrl })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur lors de la sauvegarde.');
+      setSheetFeedback({
+        type: 'success',
+        text: data.rowsImported > 0 
+          ? `Lien Google Sheet validé ! ${data.rowsImported} jours de dépenses Google Ads ont été immédiatement synchronisés.`
+          : 'Lien Google Sheet enregistré avec succès.'
+      });
+      if (onConfigUpdated) onConfigUpdated();
+    } catch (err) {
+      setSheetFeedback({ type: 'error', text: err.message });
+    } finally {
+      setSavingSheet(false);
+    }
+  };
 
   // Sauvegarder COGS
   const handleSaveCogs = async (sku, source, name, cogs) => {
@@ -626,6 +673,138 @@ export default function ConfigPanel({ onConfigUpdated }) {
               </button>
             </div>
           </form>
+
+          {/* SYNCHRONISATION GOOGLE ADS VIA GOOGLE SHEET */}
+          <div className="border border-emerald-200/90 rounded-2xl p-6 bg-emerald-50/30 space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-extrabold text-slate-900 text-sm">
+                    Synchronisation Google Ads par Google Sheet (Recommandé & Automatique)
+                  </h5>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Google Ads exporte automatiquement les dépenses quotidiennes sur un Google Sheet, et le dashboard les synchronise en direct.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                100% Automatique
+              </span>
+            </div>
+
+            {sheetFeedback && (
+              <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                sheetFeedback.type === 'success'
+                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  : 'bg-red-100 text-red-900 border border-red-200'
+              }`}>
+                <span>{sheetFeedback.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveGoogleSheet} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Lien de partage de votre Google Sheet (Partage : « Tout utilisateur disposant du lien peut consulter »)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={googleSheetUrl}
+                    onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit..."
+                    className="flex-1 bg-white border border-slate-300 text-slate-900 font-medium text-xs rounded-xl p-3 focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingSheet}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer flex-shrink-0"
+                  >
+                    <Save className="w-4 h-4" />
+                    {savingSheet ? 'Vérification...' : 'Connecter & Synchroniser'}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* SCRIPT GOOGLE ADS PRÊT À L'EMPLOI */}
+            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-slate-900">
+                  Script à coller dans votre compte Google Ads (Outils & Paramètres &gt; Scripts)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const scriptCode = `function main() {
+  // 1. Collez ici l'URL de votre Google Sheet
+  var SPREADSHEET_URL = "${googleSheetUrl || 'VOTRE_LIEN_GOOGLE_SHEET_ICI'}";
+  
+  var ss = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var sheet = ss.getActiveSheet();
+  sheet.clear();
+  sheet.appendRow(["Date", "Cost"]);
+  
+  // 2. Récupération des dépenses des 90 derniers jours
+  var query = "SELECT segments.date, metrics.cost_micros " +
+              "FROM customer " +
+              "WHERE segments.date DURING LAST_90_DAYS " +
+              "ORDER BY segments.date DESC";
+              
+  var report = AdsApp.search(query);
+  var rows = [];
+  
+  while (report.hasNext()) {
+    var row = report.next();
+    var date = row.segments.date;
+    var cost = (row.metrics.costMicros / 1000000).toFixed(2);
+    rows.push([date, cost]);
+  }
+  
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, 2).setValues(rows);
+  }
+  Logger.log(rows.length + " jours de dépenses Google Ads exportés.");
+}`;
+                    navigator.clipboard.writeText(scriptCode);
+                    setCopiedScript(true);
+                    setTimeout(() => setCopiedScript(false), 2500);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-all cursor-pointer"
+                >
+                  {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedScript ? 'Copié dans le presse-papier !' : 'Copier le script Google Ads'}
+                </button>
+              </div>
+
+              <div className="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-[11px] overflow-x-auto max-h-48 leading-relaxed">
+                <pre>{`function main() {
+  var SPREADSHEET_URL = "${googleSheetUrl || 'VOTRE_LIEN_GOOGLE_SHEET_ICI'}";
+  var ss = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var sheet = ss.getActiveSheet();
+  sheet.clear();
+  sheet.appendRow(["Date", "Cost"]);
+  
+  var query = "SELECT segments.date, metrics.cost_micros FROM customer WHERE segments.date DURING LAST_90_DAYS ORDER BY segments.date DESC";
+  var report = AdsApp.search(query);
+  var rows = [];
+  while (report.hasNext()) {
+    var row = report.next();
+    rows.push([row.segments.date, (row.metrics.costMicros / 1000000).toFixed(2)]);
+  }
+  if (rows.length > 0) sheet.getRange(2, 1, rows.length, 2).setValues(rows);
+}`}</pre>
+              </div>
+
+              <p className="text-[11px] text-slate-500 font-medium">
+                💡 <b>Astuce :</b> Dans Google Ads, définissez la fréquence d'exécution du script sur <b>Tous les jours à 06h00</b>. Votre Google Sheet sera toujours à jour automatiquement sans aucune intervention manuelle.
+              </p>
+            </div>
+          </div>
 
           {/* CONNECTEURS API INFORMATIONS */}
           <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs text-indigo-900 space-y-2">

@@ -19,12 +19,13 @@ import UnitEconomicsCard from './UnitEconomicsCard';
 export default function Dashboard({ refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'payments', 'shipping', 'margin'
   const get30DaysDefaultDates = () => {
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date();
+    const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(today.getDate() - 29);
+    const startStr = thirtyDaysAgo.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
     return {
-      startDate: thirtyDaysAgo.toISOString().split('T')[0],
+      startDate: startStr,
       endDate: todayStr,
       granularity: 'daily'
     };
@@ -36,6 +37,9 @@ export default function Dashboard({ refreshTrigger }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [force, setForce] = useState(false);
+
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  const todayRow = salesData.find(d => d.date === todayStr);
 
   const fetchSalesData = async (startDate, endDate, granularity = 'monthly', forceRefresh = false) => {
     if (!startDate || !endDate) {
@@ -98,6 +102,55 @@ export default function Dashboard({ refreshTrigger }) {
           Synchroniser les flux
         </button>
       </div>
+
+      {/* BANDEAU EN DIRECT : COMMANDES DU JOUR EN COURS */}
+      {todayRow && (
+        <div className="bg-gradient-to-r from-indigo-900 via-indigo-850 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-indigo-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fadeIn">
+          <div className="flex items-center gap-3.5">
+            <div className="relative flex-shrink-0">
+              <span className="flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black tracking-wide text-white">
+                  Commandes du jour en cours (Aujourd'hui)
+                </h4>
+                <span className="text-[10px] uppercase font-black bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  En direct
+                </span>
+              </div>
+              <p className="text-xs text-indigo-200 mt-0.5 font-medium">
+                <b className="text-white">{todayRow.totalOrdersCount} commandes</b> ({todayRow.totalSalesCount} produits vendus) pour un CA net de <b className="text-emerald-300">{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(todayRow.totalRevenue)}</b>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
+              <span className="text-emerald-400 font-bold">Shopify :</span>
+              <span className="font-extrabold">{todayRow.shopifyOrdersCount} cmd ({todayRow.shopifySalesCount} art.) • {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(todayRow.shopifyRevenue)}</span>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
+              <span className="text-amber-400 font-bold">Amazon :</span>
+              <span className="font-extrabold">{todayRow.amazonOrdersCount} cmd ({todayRow.amazonSalesCount} art.) • {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(todayRow.amazonRevenue)}</span>
+            </div>
+
+            <button
+              onClick={() => {
+                setActiveTab('orders');
+              }}
+              className="flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-xs ml-auto md:ml-0"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Voir le détail des commandes
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* BARRE D'ONGLETS DE NAVIGATION PRINCIPALE */}
       <div className="flex flex-wrap items-center gap-2 bg-slate-100/90 border border-slate-200 p-1.5 rounded-2xl shadow-xs">

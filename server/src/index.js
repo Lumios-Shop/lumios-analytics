@@ -100,6 +100,46 @@ app.get('/api/orders', async (req, res) => {
 });
 
 /**
+ * Endpoints : Configuration du Google Sheet pour la synchronisation Google Ads
+ * GET & POST /api/config/google-ads-sheet
+ */
+app.get('/api/config/google-ads-sheet', async (req, res) => {
+  try {
+    const db = getDb();
+    const row = await db.get(`SELECT value FROM settings WHERE key = 'google_ads_sheet_url'`);
+    res.json({ sheetUrl: row ? row.value : '' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/config/google-ads-sheet', async (req, res) => {
+  const { sheetUrl } = req.body;
+  try {
+    const db = getDb();
+    await db.run(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('google_ads_sheet_url', ?)`,
+      [sheetUrl ? sheetUrl.trim() : '']
+    );
+
+    let testCount = 0;
+    if (sheetUrl && sheetUrl.trim()) {
+      const { getGoogleAdsSpendFromSheet } = await import('./services/googleAdsService.js');
+      const testData = await getGoogleAdsSpendFromSheet(sheetUrl.trim(), null, null);
+      testCount = testData.length;
+      if (testCount > 0) {
+        const { saveBatchAdSpends } = await import('./services/adSpendService.js');
+        await saveBatchAdSpends(testData);
+      }
+    }
+
+    res.json({ success: true, message: 'Google Sheet configuré avec succès.', rowsImported: testCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Endpoint : Récupérer la configuration des coûts (COGS)
  * GET /api/config
  */
