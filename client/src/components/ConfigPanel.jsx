@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign, FileSpreadsheet, Copy, Check } from 'lucide-react';
+import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign, FileSpreadsheet, Copy, Check, Upload } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
@@ -45,6 +45,46 @@ export default function ConfigPanel({ onConfigUpdated }) {
   const [savingSheet, setSavingSheet] = useState(false);
   const [sheetFeedback, setSheetFeedback] = useState(null);
   const [copiedScript, setCopiedScript] = useState(false);
+
+  // État pour Import CSV Amazon Ads
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [csvFeedback, setCsvFeedback] = useState(null);
+
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCsv(true);
+    setCsvFeedback(null);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result;
+        const res = await fetch(`${API_BASE}/config/import-amazon-ads-csv`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csvText: text })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors du traitement du fichier CSV.');
+        setCsvFeedback({
+          type: 'success',
+          text: `Succès : ${data.importedDays} jours de dépenses Amazon Ads importés et enregistrés !`
+        });
+        if (onConfigUpdated) onConfigUpdated();
+      } catch (err) {
+        setCsvFeedback({ type: 'error', text: err.message });
+      } finally {
+        setUploadingCsv(false);
+      }
+    };
+    reader.onerror = () => {
+      setCsvFeedback({ type: 'error', text: 'Impossible de lire le fichier sélectionné.' });
+      setUploadingCsv(false);
+    };
+    reader.readAsText(file);
+  };
 
 
 
@@ -803,6 +843,65 @@ export default function ConfigPanel({ onConfigUpdated }) {
               <p className="text-[11px] text-slate-500 font-medium">
                 💡 <b>Astuce :</b> Dans Google Ads, définissez la fréquence d'exécution du script sur <b>Tous les jours à 06h00</b>. Votre Google Sheet sera toujours à jour automatiquement sans aucune intervention manuelle.
               </p>
+            </div>
+          </div>
+
+          {/* IMPORT RAPPORT CSV AMAZON ADS */}
+          <div className="border border-amber-200/90 rounded-2xl p-6 bg-amber-50/30 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-600 text-white rounded-xl shadow-xs">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-extrabold text-slate-900 text-sm">
+                    Importer un Rapport CSV Amazon Ads (Campagnes Sponsored Products)
+                  </h5>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Téléchargez votre rapport quotidien depuis le gestionnaire de campagnes Amazon Ads et déposez-le ici pour synchroniser vos coûts.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-3 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
+                Import Direct
+              </span>
+            </div>
+
+            {csvFeedback && (
+              <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                csvFeedback.type === 'success'
+                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  : 'bg-red-100 text-red-900 border border-red-200'
+              }`}>
+                <span>{csvFeedback.text}</span>
+              </div>
+            )}
+
+            <div className="bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-2xl p-6 text-center transition-all">
+              <input
+                type="file"
+                id="amazon-csv-input"
+                accept=".csv"
+                onChange={handleCsvUpload}
+                disabled={uploadingCsv}
+                className="hidden"
+              />
+              <label
+                htmlFor="amazon-csv-input"
+                className="flex flex-col items-center justify-center gap-2 cursor-pointer"
+              >
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-full border border-amber-100">
+                  <Upload className={`w-6 h-6 ${uploadingCsv ? 'animate-bounce' : ''}`} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs font-extrabold text-slate-800">
+                    {uploadingCsv ? 'Traitement du fichier CSV en cours...' : 'Cliquez ici pour choisir ou glisser votre fichier CSV Amazon Ads'}
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Compatible avec les rapports de campagnes Amazon Ads (.csv)
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
 

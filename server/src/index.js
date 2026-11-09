@@ -140,6 +140,74 @@ app.post('/api/config/google-ads-sheet', async (req, res) => {
 });
 
 /**
+ * POST /api/config/import-amazon-ads-csv
+ * Importe un rapport CSV brut téléchargé depuis Amazon Ads
+ */
+app.post('/api/config/import-amazon-ads-csv', async (req, res) => {
+  const { csvText } = req.body;
+  if (!csvText) {
+    return res.status(400).json({ error: 'Contenu CSV requis.' });
+  }
+
+  try {
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length <= 1) {
+      return res.status(400).json({ error: 'Le fichier CSV est vide.' });
+    }
+
+    const headerParts = lines[0].toLowerCase().split(/[,;\t]/).map(h => h.replace(/^"|"$/g, '').trim());
+    let dateIdx = headerParts.findIndex(h => h.includes('date') || h.includes('jour'));
+    let spendIdx = headerParts.findIndex(h => h.includes('dépense') || h.includes('spend') || h.includes('coût') || h.includes('cost'));
+
+    if (dateIdx === -1) dateIdx = 0;
+    if (spendIdx === -1) spendIdx = headerParts.length > 1 ? 1 : -1;
+
+    if (spendIdx === -1) {
+      return res.status(400).json({ error: 'Colonne de dépenses (Coût / Dépenses / Spend) introuvable dans le CSV.' });
+    }
+
+    const spendByDate = {};
+
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(/[,;\t]/).map(p => p.replace(/^"|"$/g, '').trim());
+      if (parts.length > Math.max(dateIdx, spendIdx)) {
+        let dateStr = parts[dateIdx];
+        if (dateStr.includes('/')) {
+          const dp = dateStr.split('/');
+          if (dp.length === 3) dateStr = `${dp[2]}-${dp[1].padStart(2, '0')}-${dp[0].padStart(2, '0')}`;
+        }
+        const costClean = parts[spendIdx].replace(/[^0-9.,-]/g, '').replace(',', '.');
+        const spend = parseFloat(costClean);
+
+        if (dateStr && !isNaN(spend) && spend > 0) {
+          spendByDate[dateStr] = (spendByDate[dateStr] || 0) + spend;
+        }
+      }
+    }
+
+    const batch = Object.entries(spendByDate).map(([date, spend]) => ({
+      date,
+      source: 'amazon',
+      spend: Math.round(spend * 100) / 100
+    }));
+
+    if (batch.length > 0) {
+      const { saveBatchAdSpends } = await import('./services/adSpendService.js');
+      await saveBatchAdSpends(batch);
+    }
+
+    res.json({
+      success: true,
+      importedDays: batch.length,
+      message: `${batch.length} jours de dépenses Amazon Ads importés avec succès !`
+    });
+  } catch (error) {
+    console.error('Erreur import CSV Amazon Ads :', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Endpoint : Récupérer la configuration des coûts (COGS)
  * GET /api/config
  */
