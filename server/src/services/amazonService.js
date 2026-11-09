@@ -71,18 +71,42 @@ export async function getAmazonSales(startDate, endDate) {
             MarketplaceIds: MARKETPLACE_ID
           };
 
-      const response = await axios.get(`${SP_API_ENDPOINT}/orders/v0/orders`, {
-        params,
-        headers: {
-          'X-Amz-Access-Token': accessToken,
-          'Content-Type': 'application/json'
+      let response;
+      let retries = 0;
+      while (retries < 5) {
+        try {
+          response = await axios.get(`${SP_API_ENDPOINT}/orders/v0/orders`, {
+            params,
+            headers: {
+              'X-Amz-Access-Token': accessToken,
+              'Content-Type': 'application/json'
+            }
+          });
+          break;
+        } catch (apiErr) {
+          if (apiErr.response?.status === 429 && retries < 4) {
+            retries++;
+            console.log(`Amazon SP-API rate limit 429, attente de ${retries * 2000}ms...`);
+            await new Promise(res => setTimeout(res, retries * 2000));
+          } else {
+            console.warn(`Amazon SP-API quota temporaire ou fin de flux (${apiErr.message}), traitement avec les ${orders.length} commandes déjà reçues.`);
+            nextToken = null;
+            break;
+          }
         }
-      });
+      }
+
+      if (!response?.data?.payload) {
+        break;
+      }
 
       const payload = response.data.payload || {};
       const pageOrders = payload.Orders || [];
       orders = orders.concat(pageOrders);
       nextToken = payload.NextToken || null;
+      if (nextToken) {
+        await new Promise(res => setTimeout(res, 1200));
+      }
     } while (nextToken);
 
     console.log(`Nombre total de commandes Amazon SP-API récupérées : ${orders.length}`);
