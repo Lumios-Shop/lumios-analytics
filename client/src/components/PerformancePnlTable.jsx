@@ -98,9 +98,38 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs font-medium">
-            {/* SECTION 1: JEUX VENDUS */}
-            <tr className="bg-slate-50/40">
-              <td className="px-6 py-2.5 font-bold text-slate-900">Jeux vendus Global</td>
+            {/* SECTION 1: COMMANDES & PRODUITS VENDUS */}
+            <tr className="bg-indigo-50/50">
+              <td className="px-6 py-2.5 font-bold text-indigo-950 flex items-center gap-2">
+                <span>🛒 Commandes Globales</span>
+              </td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-2.5 text-center font-extrabold text-indigo-900">
+                  {formatNumber(col.totalOrdersCount || (col.shopifyOrdersCount + col.amazonOrdersCount))}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-1.5">Commandes Site internet (Shopify)</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-1.5 text-center text-slate-600">
+                  {formatNumber(col.shopifyOrdersCount)}
+                </td>
+              ))}
+            </tr>
+            <tr className="text-slate-600 italic text-[11px]">
+              <td className="px-8 py-1.5">Commandes Amazon</td>
+              {sortedData.map((col) => (
+                <td key={col.date} className="px-4 py-1.5 text-center text-slate-600">
+                  {formatNumber(col.amazonOrdersCount)}
+                </td>
+              ))}
+            </tr>
+
+            <tr className="bg-slate-50/70 border-t border-slate-200/60">
+              <td className="px-6 py-2.5 font-bold text-slate-900 flex items-center gap-2">
+                <span>📦 Produits vendus Global (Unités)</span>
+              </td>
               {sortedData.map((col) => (
                 <td key={col.date} className="px-4 py-2.5 text-center font-extrabold text-slate-900">
                   {formatNumber(col.totalSalesCount)}
@@ -108,20 +137,33 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               ))}
             </tr>
             <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2">Jeux vendus Site internet</td>
+              <td className="px-8 py-1.5">Produits vendus Site internet</td>
               {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-slate-600">
+                <td key={col.date} className="px-4 py-1.5 text-center text-slate-600">
                   {formatNumber(col.shopifySalesCount)}
                 </td>
               ))}
             </tr>
             <tr className="text-slate-600 italic text-[11px]">
-              <td className="px-8 py-2">Jeux vendus Amazon</td>
+              <td className="px-8 py-1.5">Produits vendus Amazon</td>
               {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-2 text-center text-slate-600">
+                <td key={col.date} className="px-4 py-1.5 text-center text-slate-600">
                   {formatNumber(col.amazonSalesCount)}
                 </td>
               ))}
+            </tr>
+
+            <tr className="text-slate-500 text-[11px] bg-slate-50/30">
+              <td className="px-8 py-1.5 font-medium">Moyenne Produits / Commande</td>
+              {sortedData.map((col) => {
+                const orders = col.totalOrdersCount || (col.shopifyOrdersCount + col.amazonOrdersCount) || 1;
+                const ratio = orders > 0 ? (col.totalSalesCount / orders).toFixed(2) : '1.00';
+                return (
+                  <td key={col.date} className="px-4 py-1.5 text-center font-semibold text-slate-700">
+                    {ratio} art./cmd
+                  </td>
+                );
+              })}
             </tr>
 
             {/* SECTION 2: VENTES BRUTES */}

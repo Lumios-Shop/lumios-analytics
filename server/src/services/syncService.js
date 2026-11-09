@@ -118,6 +118,83 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
         await insertStmt.finalize();
         await insertCostStmt.finalize();
 
+        // Sauvegarder les commandes individuelles détaillées dans orders_cache
+        try {
+          await db.run(`DELETE FROM orders_cache WHERE date BETWEEN ? AND ?`, [startDate, endDate]);
+          const insertOrderStmt = await db.prepare(`
+            INSERT OR REPLACE INTO orders_cache (
+              order_id, order_number, source, date, created_at,
+              total_price, items_count, items_summary, items_json,
+              payment_method, shipping_method, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          if (shopifyData.rawOrders) {
+            for (const order of shopifyData.rawOrders) {
+              const orderDate = new Date(order.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+              const items = (order.line_items || []).map(li => ({
+                title: li.title,
+                sku: li.sku || 'LUMIOS01',
+                quantity: li.quantity || 1,
+                price: parseFloat(li.price || 0)
+              }));
+              const totalItemsCount = items.reduce((sum, it) => sum + it.quantity, 0);
+              const itemsSummary = items.map(it => `${it.quantity}x ${it.title}`).join(', ');
+              const paymentMethod = (order.payment_gateway_names || []).join(', ') || 'CB';
+              const shippingMethod = order.shipping_lines?.[0]?.title || 'Standard';
+
+              await insertOrderStmt.run(
+                `shopify_${order.id}`,
+                order.name || `#${order.id}`,
+                'shopify',
+                orderDate,
+                order.created_at,
+                parseFloat(order.total_price || 0),
+                totalItemsCount,
+                itemsSummary,
+                JSON.stringify(items),
+                paymentMethod,
+                shippingMethod,
+                order.financial_status || 'paid'
+              );
+            }
+          }
+
+          if (amazonData.rawOrders) {
+            for (const order of amazonData.rawOrders) {
+              const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+              const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
+              const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
+              const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
+              const items = [{
+                title: 'Lumios - Le Jeu',
+                sku: 'AMAZON-DEFAULT',
+                quantity: qty,
+                price: 40.00
+              }];
+
+              await insertOrderStmt.run(
+                `amazon_${order.AmazonOrderId}`,
+                order.AmazonOrderId,
+                'amazon',
+                orderDate,
+                order.PurchaseDate,
+                revenue,
+                qty,
+                `${qty}x Lumios - Le Jeu`,
+                JSON.stringify(items),
+                'Amazon Pay',
+                order.FulfillmentChannel === 'AFN' ? 'Expédié par Amazon (FBA)' : 'Expédié par Vendeur (FBM)',
+                order.OrderStatus || 'Shipped'
+              );
+            }
+          }
+
+          await insertOrderStmt.finalize();
+        } catch (ordersErr) {
+          console.error("Erreur lors de la mise en cache des commandes détaillées :", ordersErr);
+        }
+
         await db.run(
           `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
           [Date.now().toString()]

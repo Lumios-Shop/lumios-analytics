@@ -6,3 +6,4 @@ dist/
 build/
 .DS_Store
 *.sqlite
+scripts/meta-ads/data/

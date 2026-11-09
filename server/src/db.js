@@ -57,6 +57,22 @@ export async function initDb() {
       name TEXT,
       cost_per_order REAL DEFAULT 0.0
     );
+
+    CREATE TABLE IF NOT EXISTS orders_cache (
+      order_id TEXT PRIMARY KEY,
+      order_number TEXT,
+      source TEXT,
+      date TEXT,
+      created_at TEXT,
+      total_price REAL,
+      items_count INTEGER,
+      items_summary TEXT,
+      items_json TEXT,
+      payment_method TEXT,
+      shipping_method TEXT,
+      status TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS ad_spends (
       date TEXT,
       source TEXT,

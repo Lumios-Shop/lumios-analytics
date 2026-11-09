@@ -61,6 +61,45 @@ app.get('/api/sales', async (req, res) => {
 });
 
 /**
+ * Endpoint : Récupérer le détail de chaque commande et de ses produits vendus
+ * GET /api/orders?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&source=shopify|amazon|all
+ */
+app.get('/api/orders', async (req, res) => {
+  const { startDate, endDate, source } = req.query;
+
+  try {
+    const db = getDb();
+    let query = `SELECT * FROM orders_cache`;
+    const params = [];
+
+    if (startDate && endDate) {
+      query += ` WHERE date BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+      if (source && source !== 'all') {
+        query += ` AND source = ?`;
+        params.push(source);
+      }
+    } else if (source && source !== 'all') {
+      query += ` WHERE source = ?`;
+      params.push(source);
+    }
+
+    query += ` ORDER BY date DESC, created_at DESC LIMIT 500`;
+
+    const rows = await db.all(query, params);
+    const parsedOrders = rows.map(r => ({
+      ...r,
+      items: r.items_json ? JSON.parse(r.items_json) : []
+    }));
+
+    res.json(parsedOrders);
+  } catch (error) {
+    console.error('Erreur lors de la récupération des commandes détaillées :', error);
+    res.status(500).json({ error: 'Impossible de récupérer le détail des commandes.' });
+  }
+});
+
+/**
  * Endpoint : Récupérer la configuration des coûts (COGS)
  * GET /api/config
  */

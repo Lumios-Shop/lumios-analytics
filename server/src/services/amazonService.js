@@ -137,7 +137,9 @@ export async function getAmazonSales(startDate, endDate) {
       }
     }
 
-    return Object.values(dailySkuMap);
+    const results = Object.values(dailySkuMap);
+    results.rawOrders = orders;
+    return results;
   } catch (error) {
     console.error("Erreur lors de la récupération des ventes Amazon :", error.message);
     throw error;

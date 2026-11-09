@@ -72,7 +72,9 @@ export async function getShopifySales(startDate, endDate) {
     }
 
     console.log(`Nombre total de commandes Shopify récupérées : ${allOrders.length}`);
-    return processShopifyOrders(allOrders);
+    const results = processShopifyOrders(allOrders);
+    results.rawOrders = allOrders;
+    return results;
   } catch (error) {
     console.error("Erreur lors de la récupération des ventes Shopify :", error.message);
     throw error;

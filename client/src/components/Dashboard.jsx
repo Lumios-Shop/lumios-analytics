@@ -9,7 +9,8 @@ import PerformancePnlTable from './PerformancePnlTable';
 import PaymentsAnalyticsTab from './PaymentsAnalyticsTab';
 import ShippingAnalyticsTab from './ShippingAnalyticsTab';
 import MarginCalculatorTab from './MarginCalculatorTab';
-import { BarChart3, CreditCard, Truck, Calculator } from 'lucide-react';
+import OrdersDetailSection from './OrdersDetailSection';
+import { BarChart3, CreditCard, Truck, Calculator, Layers } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
@@ -113,6 +114,18 @@ export default function Dashboard({ refreshTrigger }) {
         </button>
 
         <button
+          onClick={() => setActiveTab('orders')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            activeTab === 'orders'
+              ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/80'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Détail Commandes & Produits vendus
+        </button>
+
+        <button
           onClick={() => setActiveTab('shipping')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
             activeTab === 'shipping'
@@ -168,7 +181,23 @@ export default function Dashboard({ refreshTrigger }) {
 
               {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L (STRICTEMENT MENSUEL) */}
               <PerformancePnlTable data={monthlySalesData} granularity="monthly" />
+
+              {/* SECTION DÉTAIL DES COMMANDES DIRECTEMENT ACCESSIBLE */}
+              <OrdersDetailSection
+                startDate={filter.startDate}
+                endDate={filter.endDate}
+                refreshTrigger={refreshTrigger}
+              />
             </>
+          )}
+
+          {/* ONGLET DÉDIÉ : DÉTAIL DES COMMANDES ET PRODUITS VENDUS */}
+          {activeTab === 'orders' && (
+            <OrdersDetailSection
+              startDate={filter.startDate}
+              endDate={filter.endDate}
+              refreshTrigger={refreshTrigger}
+            />
           )}
 
           {/* ONGLET 2: REPARTITION ET COÛTS DE LIVRAISON */}
