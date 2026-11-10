@@ -84,8 +84,8 @@ export async function getAmazonAdsSpend(startDate, endDate) {
   // 2. Tenter l'API Amazon Advertising si un refresh token valide (Atzr|...) est fourni
   const profileId = process.env.AMAZON_ADS_PROFILE_ID;
   const rawRefreshToken = process.env.AMAZON_ADS_REFRESH_TOKEN;
-  const clientId = process.env.SELLER_CENTRAL_CLIENT_ID;
-  const clientSecret = process.env.SELLER_CENTRAL_CLIENT_SECRET;
+  const clientId = process.env.AMAZON_ADS_CLIENT_ID || process.env.SELLER_CENTRAL_CLIENT_ID;
+  const clientSecret = process.env.AMAZON_ADS_CLIENT_SECRET || process.env.SELLER_CENTRAL_CLIENT_SECRET;
 
   // Si le token ne commence pas par Atzr|, c'est un client secret ou token invalide
   if (!rawRefreshToken || !rawRefreshToken.startsWith('Atzr|') || !profileId || !clientId) {
