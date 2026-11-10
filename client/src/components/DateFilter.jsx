@@ -58,20 +58,21 @@ export default function DateFilter({ onFilterChange }) {
         };
       }
       case 'month': {
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-        const offset = firstDay.getTimezoneOffset();
-        const localFirstDay = new Date(firstDay.getTime() - (offset * 60 * 1000));
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
         return {
-          startDate: localFirstDay.toISOString().split('T')[0],
+          startDate: `${y}-${m}-01`,
           endDate: todayStr
         };
       }
       case 'last_month': {
-        const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const y = prevMonthDate.getFullYear();
+        const m = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+        const lastDay = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
         return {
-          startDate: firstDayLastMonth.toISOString().split('T')[0],
-          endDate: lastDayLastMonth.toISOString().split('T')[0]
+          startDate: `${y}-${m}-01`,
+          endDate: `${y}-${m}-${String(lastDay).padStart(2, '0')}`
         };
       }
       case '12months': {

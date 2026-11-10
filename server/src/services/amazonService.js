@@ -54,9 +54,9 @@ export async function getAmazonSales(startDate, endDate) {
   try {
     const accessToken = await getLwaAccessToken();
 
-    const minDate = new Date(`${startDate}T00:00:00+02:00`).toISOString();
+    const minDate = new Date(`${startDate}T00:00:00`).toISOString();
     const nowMinus3Min = new Date(Date.now() - 3 * 60 * 1000);
-    const requestedEnd = new Date(`${endDate}T23:59:59+02:00`);
+    const requestedEnd = new Date(`${endDate}T23:59:59`);
     const maxDate = new Date(Math.min(requestedEnd.getTime(), nowMinus3Min.getTime())).toISOString();
 
     let orders = [];
@@ -73,6 +73,7 @@ export async function getAmazonSales(startDate, endDate) {
 
       let response;
       let retries = 0;
+      const backoffDelays = [2000, 5000, 10000, 15000];
       while (retries < 5) {
         try {
           response = await axios.get(`${SP_API_ENDPOINT}/orders/v0/orders`, {
@@ -85,9 +86,10 @@ export async function getAmazonSales(startDate, endDate) {
           break;
         } catch (apiErr) {
           if (apiErr.response?.status === 429 && retries < 4) {
+            const delay = backoffDelays[retries] || 5000;
             retries++;
-            console.log(`Amazon SP-API rate limit 429, attente de ${retries * 2000}ms...`);
-            await new Promise(res => setTimeout(res, retries * 2000));
+            console.log(`Amazon SP-API rate limit 429, attente de ${delay}ms...`);
+            await new Promise(res => setTimeout(res, delay));
           } else {
             console.warn(`Amazon SP-API quota temporaire ou fin de flux (${apiErr.message}), traitement avec les ${orders.length} commandes déjà reçues.`);
             nextToken = null;
@@ -105,7 +107,7 @@ export async function getAmazonSales(startDate, endDate) {
       orders = orders.concat(pageOrders);
       nextToken = payload.NextToken || null;
       if (nextToken) {
-        await new Promise(res => setTimeout(res, 1200));
+        await new Promise(res => setTimeout(res, 2000));
       }
     } while (nextToken);
 
@@ -181,8 +183,8 @@ function generateMockAmazonData(startDate, endDate) {
   ];
 
   const data = [];
-  let current = new Date(startDate);
-  const end = new Date(endDate);
+  let current = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];

@@ -21,9 +21,27 @@ async function performSync(startDate, endDate) {
   console.log(`Synchronisation en direct des API Shopify, Amazon, Meta Ads, Amazon Ads et Google Ads pour la période : ${startDate} au ${endDate}`);
   
   try {
+    // Déterminer la plage optimale pour Amazon SP-API pour éviter les quotas stricts (429)
+    let amazonStartDate = startDate;
+    const today = new Date();
+    const threeDaysAgo = new Date(today);
+    threeDaysAgo.setDate(today.getDate() - 3);
+    const threeDaysAgoStr = threeDaysAgo.toISOString().split('T')[0];
+
+    // Vérifier si nous avons déjà des données Amazon historiques enregistrées
+    const existingAmazonHistorical = await db.get(
+      `SELECT count(*) as count FROM daily_sku_sales WHERE source = 'amazon' AND date < ?`,
+      [threeDaysAgoStr]
+    );
+
+    if (existingAmazonHistorical?.count > 0 && startDate < threeDaysAgoStr) {
+      // Les données historiques sont déjà là, on synchronise les 3 derniers jours pour garantir le temps réel sans saturer SP-API
+      amazonStartDate = threeDaysAgoStr;
+    }
+
     const [shopifyData, amazonData, metaAdsData, amazonAdsData, googleAdsData] = await Promise.all([
       getShopifySales(startDate, endDate),
-      getAmazonSales(startDate, endDate),
+      getAmazonSales(amazonStartDate, endDate),
       getMetaAdsSpend(startDate, endDate),
       getAmazonAdsSpend(startDate, endDate),
       getGoogleAdsSpend(startDate, endDate)
@@ -55,12 +73,15 @@ async function performSync(startDate, endDate) {
       VALUES (?, ?, ?, 0.0)
     `);
 
-    // Traiter les données Shopify (uniquement si reçues pour ne jamais écraser la DB en cas d'erreur)
+    // Traiter les données Shopify (uniquement les dates reçues pour ne jamais écraser l'historique)
     if (shopifyData && shopifyData.length > 0) {
-      await db.run(
-        `DELETE FROM daily_sku_sales WHERE source = 'shopify' AND date BETWEEN ? AND ?`,
-        [startDate, endDate]
-      );
+      const datesToUpdate = [...new Set(shopifyData.map(item => item.date))];
+      for (const d of datesToUpdate) {
+        await db.run(
+          `DELETE FROM daily_sku_sales WHERE source = 'shopify' AND date = ?`,
+          [d]
+        );
+      }
       for (const item of shopifyData) {
         await insertStmt.run(
           item.date,
@@ -86,12 +107,15 @@ async function performSync(startDate, endDate) {
       }
     }
 
-    // Traiter les données Amazon (uniquement si reçues pour ne jamais supprimer les ventes enregistrées)
+    // Traiter les données Amazon (uniquement les dates reçues pour préserver l'historique)
     if (amazonData && amazonData.length > 0) {
-      await db.run(
-        `DELETE FROM daily_sku_sales WHERE source = 'amazon' AND date BETWEEN ? AND ?`,
-        [startDate, endDate]
-      );
+      const datesToUpdate = [...new Set(amazonData.map(item => item.date))];
+      for (const d of datesToUpdate) {
+        await db.run(
+          `DELETE FROM daily_sku_sales WHERE source = 'amazon' AND date = ?`,
+          [d]
+        );
+      }
       for (const item of amazonData) {
         await insertStmt.run(
           item.date,
@@ -122,7 +146,12 @@ async function performSync(startDate, endDate) {
       `);
 
       if (shopifyData && shopifyData.rawOrders && shopifyData.rawOrders.length > 0) {
-        await db.run(`DELETE FROM orders_cache WHERE source = 'shopify' AND date BETWEEN ? AND ?`, [startDate, endDate]);
+        const datesToUpdate = [...new Set(shopifyData.rawOrders.map(order => 
+          new Date(order.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' })
+        ))];
+        for (const d of datesToUpdate) {
+          await db.run(`DELETE FROM orders_cache WHERE source = 'shopify' AND date = ?`, [d]);
+        }
         for (const order of shopifyData.rawOrders) {
           const orderDate = new Date(order.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
           const items = (order.line_items || []).map(li => ({
@@ -154,7 +183,12 @@ async function performSync(startDate, endDate) {
       }
 
       if (amazonData && amazonData.rawOrders && amazonData.rawOrders.length > 0) {
-        await db.run(`DELETE FROM orders_cache WHERE source = 'amazon' AND date BETWEEN ? AND ?`, [startDate, endDate]);
+        const datesToUpdate = [...new Set(amazonData.rawOrders.map(order => 
+          new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' })
+        ))];
+        for (const d of datesToUpdate) {
+          await db.run(`DELETE FROM orders_cache WHERE source = 'amazon' AND date = ?`, [d]);
+        }
         for (const order of amazonData.rawOrders) {
           const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
           const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
@@ -206,30 +240,50 @@ async function performSync(startDate, endDate) {
  */
 export async function syncAndGetSalesData(startDate, endDate, forceRefresh = false, granularity = 'daily') {
   const requestedDates = [];
-  let current = new Date(startDate);
-  const end = new Date(endDate);
+  let current = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
     requestedDates.push(dateStr);
-    current.setDate(current.getDate() + 1);
-  }
-
-  const syncKey = `${startDate}_${endDate}`;
-  if (activeSyncPromises.has(syncKey)) {
-    // Si une synchronisation identique est déjà en cours, attendre sa fin
-    await activeSyncPromises.get(syncKey);
-  } else {
-    const promise = performSync(startDate, endDate);
-    activeSyncPromises.set(syncKey, promise);
-    try {
-      await promise;
-    } finally {
-      activeSyncPromises.delete(syncKey);
-    }
+    current.setUTCDate(current.getUTCDate() + 1);
   }
 
   const db = getDb();
+
+  // Vérifier le cache si forceRefresh est false
+  let shouldSync = true;
+  if (!forceRefresh) {
+    const lastSyncSetting = await db.get(`SELECT value FROM settings WHERE key = 'last_sync_today'`);
+    const lastSyncTime = lastSyncSetting?.value ? parseInt(lastSyncSetting.value) : 0;
+    const isRecent = (Date.now() - lastSyncTime) < (5 * 60 * 1000); // 5 minutes TTL
+    
+    // Vérifier si la base a déjà des données récentes
+    const hasEndData = await db.get(
+      `SELECT count(*) as count FROM daily_sku_sales WHERE date = ?`,
+      [endDate]
+    );
+
+    if (isRecent && hasEndData?.count > 0) {
+      shouldSync = false;
+    }
+  }
+
+  if (shouldSync) {
+    const syncKey = `${startDate}_${endDate}`;
+    if (activeSyncPromises.has(syncKey)) {
+      // Si une synchronisation identique est déjà en cours, attendre sa fin
+      await activeSyncPromises.get(syncKey);
+    } else {
+      const promise = performSync(startDate, endDate);
+      activeSyncPromises.set(syncKey, promise);
+      try {
+        await promise;
+      } finally {
+        activeSyncPromises.delete(syncKey);
+      }
+    }
+  }
 
   // 5. Récupérer les données agrégées et calculer la marge avec les COGS, frais d'expédition et dépenses Ads
   const salesQuery = `

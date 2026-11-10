@@ -31,8 +31,8 @@ export async function getShopifySales(startDate, endDate) {
   }
 
   try {
-    const minDate = new Date(`${startDate}T00:00:00+02:00`).toISOString();
-    const maxDate = new Date(`${endDate}T23:59:59+02:00`).toISOString();
+    const minDate = new Date(`${startDate}T00:00:00`).toISOString();
+    const maxDate = new Date(`${endDate}T23:59:59`).toISOString();
 
     let allOrders = [];
     let nextUrl = `https://${SHOP_NAME}/admin/api/2024-04/orders.json`;
@@ -224,8 +224,8 @@ function generateMockShopifyData(startDate, endDate) {
   ];
 
   const data = [];
-  let current = new Date(startDate);
-  const end = new Date(endDate);
+  let current = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
