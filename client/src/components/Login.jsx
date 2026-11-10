@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, BarChart3 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || (
+  typeof window !== 'undefined' && (window.location.hostname.includes('trycloudflare.com') || window.location.hostname.includes('192.168.') || window.location.hostname.includes('loca.lt'))
+    ? '/api'
+    : 'http://localhost:3001/api'
+);
 
 export default function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('davhuin@gmail.com');

@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign, FileSpreadsheet, Copy, Check, Upload } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || (
+  typeof window !== 'undefined' && (window.location.hostname.includes('trycloudflare.com') || window.location.hostname.includes('192.168.') || window.location.hostname.includes('loca.lt'))
+    ? '/api'
+    : 'http://localhost:3001/api'
+);
 
 export default function ConfigPanel({ onConfigUpdated }) {
   const [activeTab, setActiveTab] = useState('cogs'); // 'cogs', 'payment', 'shipping', 'ads'
