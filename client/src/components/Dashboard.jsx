@@ -11,12 +11,9 @@ import ShippingAnalyticsTab from './ShippingAnalyticsTab';
 import MarginCalculatorTab from './MarginCalculatorTab';
 import OrdersDetailSection from './OrdersDetailSection';
 import { BarChart3, CreditCard, Truck, Calculator, Layers } from 'lucide-react';
+import { authFetch, getApiBase } from '../utils/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE || (
-  typeof window !== 'undefined' && (window.location.hostname.includes('trycloudflare.com') || window.location.hostname.includes('192.168.') || window.location.hostname.includes('loca.lt'))
-    ? '/api'
-    : 'http://localhost:3001/api'
-);
+const API_BASE = getApiBase();
 
 import UnitEconomicsCard from './UnitEconomicsCard';
 
@@ -54,13 +51,13 @@ export default function Dashboard({ refreshTrigger }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=${granularity}${forceRefresh ? '&force=true' : ''}`);
+      const res = await authFetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=${granularity}${forceRefresh ? '&force=true' : ''}`);
       if (!res.ok) throw new Error('Impossible de charger les données de ventes.');
       const data = await res.json();
 
       let monthlyData = data;
       if (granularity !== 'monthly') {
-        const resMonthly = await fetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=monthly${forceRefresh ? '&force=true' : ''}`);
+        const resMonthly = await authFetch(`${API_BASE}/sales?startDate=${startDate}&endDate=${endDate}&granularity=monthly${forceRefresh ? '&force=true' : ''}`);
         if (resMonthly.ok) monthlyData = await resMonthly.json();
       }
 

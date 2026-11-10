@@ -13,8 +13,9 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
+import { authFetch, getApiBase } from '../utils/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = getApiBase();
 
 export default function OrdersDetailSection({ startDate, endDate, refreshTrigger }) {
   const [orders, setOrders] = useState([]);
@@ -30,7 +31,7 @@ export default function OrdersDetailSection({ startDate, endDate, refreshTrigger
     let isMounted = true;
     setLoading(true);
 
-    fetch(`${API_BASE}/orders?startDate=${startDate}&endDate=${endDate}`)
+    authFetch(`${API_BASE}/orders?startDate=${startDate}&endDate=${endDate}`)
       .then(res => res.json())
       .then(data => {
         if (isMounted) {

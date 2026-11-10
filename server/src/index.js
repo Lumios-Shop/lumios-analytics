@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import crypto from 'crypto';
 import { initDb, getDb } from './db.js';
 import { syncAndGetSalesData } from './services/syncService.js';
 
@@ -9,6 +10,52 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Clé secrète de signature cryptographique HMAC pour les sessions administrateur
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.ADMIN_PASSWORD ? `${process.env.ADMIN_PASSWORD}_lumios_sec_key_2026` : 'lumios_secure_secret_token_key');
+
+function generateToken(email) {
+  const payload = JSON.stringify({ email, exp: Date.now() + 30 * 24 * 60 * 60 * 1000 }); // Valide 30 jours
+  const hmac = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex');
+  return Buffer.from(`${payload}.${hmac}`).toString('base64url');
+}
+
+function verifyToken(tokenStr) {
+  try {
+    if (!tokenStr) return null;
+    const decoded = Buffer.from(tokenStr, 'base64url').toString('utf8');
+    const dotIdx = decoded.lastIndexOf('.');
+    if (dotIdx === -1) return null;
+    const payloadStr = decoded.substring(0, dotIdx);
+    const hmac = decoded.substring(dotIdx + 1);
+    const expectedHmac = crypto.createHmac('sha256', JWT_SECRET).update(payloadStr).digest('hex');
+    if (hmac !== expectedHmac) return null;
+    const data = JSON.parse(payloadStr);
+    if (Date.now() > data.exp) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Middleware de sécurité : Bloque tout accès non authentifié
+ */
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Accès non autorisé. Jeton d\'authentification manquant.' });
+  }
+
+  const token = authHeader.substring(7).trim();
+  const valid = verifyToken(token);
+  if (!valid) {
+    return res.status(401).json({ error: 'Session expirée ou invalide. Veuillez vous reconnecter.' });
+  }
+
+  req.user = valid;
+  next();
+}
 
 app.use(cors());
 app.use(express.json());
@@ -29,10 +76,14 @@ try {
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
   const adminEmail = process.env.ADMIN_EMAIL || 'davhuin@gmail.com';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Lumios2026!';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    return res.status(500).json({ error: 'Mot de passe administrateur non configuré dans .env.' });
+  }
 
   if (email && email.toLowerCase().trim() === adminEmail.toLowerCase() && password === adminPassword) {
-    const token = Buffer.from(`${adminEmail}:${Date.now()}`).toString('base64');
+    const token = generateToken(adminEmail);
     return res.json({ success: true, token, user: { email: adminEmail } });
   }
 
@@ -43,7 +94,7 @@ app.post('/api/auth/login', (req, res) => {
  * Endpoint : Récupérer les ventes et marges quotidiennes agrégées
  * GET /api/sales?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&force=true
  */
-app.get('/api/sales', async (req, res) => {
+app.get('/api/sales', requireAuth, async (req, res) => {
   const { startDate, endDate, force, granularity } = req.query;
 
   if (!startDate || !endDate) {
@@ -64,7 +115,7 @@ app.get('/api/sales', async (req, res) => {
  * Endpoint : Récupérer le détail de chaque commande et de ses produits vendus
  * GET /api/orders?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&source=shopify|amazon|all
  */
-app.get('/api/orders', async (req, res) => {
+app.get('/api/orders', requireAuth, async (req, res) => {
   const { startDate, endDate, source } = req.query;
 
   try {
@@ -103,7 +154,7 @@ app.get('/api/orders', async (req, res) => {
  * Endpoints : Configuration du Google Sheet pour la synchronisation Google Ads
  * GET & POST /api/config/google-ads-sheet
  */
-app.get('/api/config/google-ads-sheet', async (req, res) => {
+app.get('/api/config/google-ads-sheet', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const row = await db.get(`SELECT value FROM settings WHERE key = 'google_ads_sheet_url'`);
@@ -113,7 +164,7 @@ app.get('/api/config/google-ads-sheet', async (req, res) => {
   }
 });
 
-app.post('/api/config/google-ads-sheet', async (req, res) => {
+app.post('/api/config/google-ads-sheet', requireAuth, async (req, res) => {
   const { sheetUrl } = req.body;
   try {
     const db = getDb();
@@ -143,7 +194,7 @@ app.post('/api/config/google-ads-sheet', async (req, res) => {
  * POST /api/config/import-amazon-ads-csv
  * Importe un rapport CSV brut téléchargé depuis Amazon Ads
  */
-app.post('/api/config/import-amazon-ads-csv', async (req, res) => {
+app.post('/api/config/import-amazon-ads-csv', requireAuth, async (req, res) => {
   const { csvText } = req.body;
   if (!csvText) {
     return res.status(400).json({ error: 'Contenu CSV requis.' });
@@ -211,7 +262,7 @@ app.post('/api/config/import-amazon-ads-csv', async (req, res) => {
  * Endpoint : Récupérer la configuration des coûts (COGS)
  * GET /api/config
  */
-app.get('/api/config', async (req, res) => {
+app.get('/api/config', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const productCosts = await db.all('SELECT * FROM product_costs ORDER BY source, sku');
@@ -226,7 +277,7 @@ app.get('/api/config', async (req, res) => {
  * Endpoint : Ajouter ou mettre à jour un coût produit (COGS)
  * POST /api/config
  */
-app.post('/api/config', async (req, res) => {
+app.post('/api/config', requireAuth, async (req, res) => {
   const { sku, name, source, cogs, fees_override_percent } = req.body;
 
   if (!sku || !source) {
@@ -263,7 +314,7 @@ app.post('/api/config', async (req, res) => {
  * Endpoint : Supprimer un coût produit de la configuration
  * DELETE /api/config/:sku?source=shopify|amazon
  */
-app.delete('/api/config/:sku', async (req, res) => {
+app.delete('/api/config/:sku', requireAuth, async (req, res) => {
   const { sku } = req.params;
   const { source } = req.query;
 
@@ -284,7 +335,7 @@ app.delete('/api/config/:sku', async (req, res) => {
 /**
  * Endpoints : Récupérer et mettre à jour les frais de transaction (CB vs PayPal)
  */
-app.get('/api/config/payment-fees', async (req, res) => {
+app.get('/api/config/payment-fees', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const fees = await db.all('SELECT * FROM payment_method_fees');
@@ -294,7 +345,7 @@ app.get('/api/config/payment-fees', async (req, res) => {
   }
 });
 
-app.post('/api/config/payment-fees', async (req, res) => {
+app.post('/api/config/payment-fees', requireAuth, async (req, res) => {
   const { code, name, percent_fee, fixed_fee } = req.body;
   try {
     const db = getDb();
@@ -311,7 +362,7 @@ app.post('/api/config/payment-fees', async (req, res) => {
 /**
  * Endpoints : Récupérer et mettre à jour les coûts d'expédition (Domicile vs Relais)
  */
-app.get('/api/config/shipping-costs', async (req, res) => {
+app.get('/api/config/shipping-costs', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const costs = await db.all('SELECT * FROM shipping_method_costs');
@@ -321,7 +372,7 @@ app.get('/api/config/shipping-costs', async (req, res) => {
   }
 });
 
-app.post('/api/config/shipping-costs', async (req, res) => {
+app.post('/api/config/shipping-costs', requireAuth, async (req, res) => {
   const { code, name, cost_per_order } = req.body;
   try {
     const db = getDb();
@@ -340,7 +391,7 @@ app.post('/api/config/shipping-costs', async (req, res) => {
  * GET /api/config/ad-spends?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * POST /api/config/ad-spends
  */
-app.get('/api/config/ad-spends', async (req, res) => {
+app.get('/api/config/ad-spends', requireAuth, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const db = getDb();
@@ -355,7 +406,7 @@ app.get('/api/config/ad-spends', async (req, res) => {
   }
 });
 
-app.post('/api/config/ad-spends', async (req, res) => {
+app.post('/api/config/ad-spends', requireAuth, async (req, res) => {
   const { date, source, spend, batch } = req.body;
 
   try {
@@ -387,7 +438,7 @@ app.post('/api/config/ad-spends', async (req, res) => {
  * Endpoint : Obtenir la synthèse des proportions de paiement et de livraison
  * GET /api/analytics/proportions?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  */
-app.get('/api/analytics/proportions', async (req, res) => {
+app.get('/api/analytics/proportions', requireAuth, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const db = getDb();

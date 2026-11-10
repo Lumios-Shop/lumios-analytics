@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Save, Trash2, Plus, Edit2, X, AlertCircle, RefreshCw, CreditCard, Truck, Package, DollarSign, FileSpreadsheet, Copy, Check, Upload } from 'lucide-react';
+import { authFetch, getApiBase } from '../utils/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE || (
-  typeof window !== 'undefined' && (window.location.hostname.includes('trycloudflare.com') || window.location.hostname.includes('192.168.') || window.location.hostname.includes('loca.lt'))
-    ? '/api'
-    : 'http://localhost:3001/api'
-);
+const API_BASE = getApiBase();
 
 export default function ConfigPanel({ onConfigUpdated }) {
   const [activeTab, setActiveTab] = useState('cogs'); // 'cogs', 'payment', 'shipping', 'ads'
@@ -65,7 +62,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
     reader.onload = async (event) => {
       try {
         const text = event.target?.result;
-        const res = await fetch(`${API_BASE}/config/import-amazon-ads-csv`, {
+        const res = await authFetch(`${API_BASE}/config/import-amazon-ads-csv`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ csvText: text })
@@ -97,7 +94,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
     setLoadingProducts(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/config`);
+      const res = await authFetch(`${API_BASE}/config`);
       if (!res.ok) throw new Error('Impossible de charger la configuration.');
       const data = await res.json();
       setProducts(data);
@@ -111,7 +108,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Charger Frais de Règlement
   const fetchPaymentFees = async () => {
     try {
-      const res = await fetch(`${API_BASE}/config/payment-fees`);
+      const res = await authFetch(`${API_BASE}/config/payment-fees`);
       if (res.ok) {
         const data = await res.json();
         setPaymentFees(data);
@@ -124,7 +121,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Charger Frais d'Expédition
   const fetchShippingCosts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/config/shipping-costs`);
+      const res = await authFetch(`${API_BASE}/config/shipping-costs`);
       if (res.ok) {
         const data = await res.json();
         setShippingCosts(data);
@@ -137,7 +134,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Charger URL Google Sheet
   const fetchGoogleSheetConfig = async () => {
     try {
-      const res = await fetch(`${API_BASE}/config/google-ads-sheet`);
+      const res = await authFetch(`${API_BASE}/config/google-ads-sheet`);
       if (res.ok) {
         const data = await res.json();
         setGoogleSheetUrl(data.sheetUrl || '');
@@ -160,7 +157,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
     setSavingSheet(true);
     setSheetFeedback(null);
     try {
-      const res = await fetch(`${API_BASE}/config/google-ads-sheet`, {
+      const res = await authFetch(`${API_BASE}/config/google-ads-sheet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sheetUrl: googleSheetUrl })
@@ -184,7 +181,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Sauvegarder COGS
   const handleSaveCogs = async (sku, source, name, cogs) => {
     try {
-      const res = await fetch(`${API_BASE}/config`, {
+      const res = await authFetch(`${API_BASE}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sku, name, source, cogs })
@@ -210,7 +207,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   const handleDeleteProduct = async (sku, source) => {
     if (!confirm(`Supprimer le SKU ${sku} ?`)) return;
     try {
-      await fetch(`${API_BASE}/config/${sku}?source=${source}`, { method: 'DELETE' });
+      await authFetch(`${API_BASE}/config/${sku}?source=${source}`, { method: 'DELETE' });
       await fetchConfig();
       if (onConfigUpdated) onConfigUpdated();
     } catch (err) {
@@ -221,7 +218,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Sauvegarder frais de paiement
   const handleSavePaymentFee = async (code, name, percent_fee, fixed_fee) => {
     try {
-      await fetch(`${API_BASE}/config/payment-fees`, {
+      await authFetch(`${API_BASE}/config/payment-fees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, name, percent_fee, fixed_fee })
@@ -236,7 +233,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
   // Sauvegarder frais de livraison
   const handleSaveShippingCost = async (code, name, cost_per_order) => {
     try {
-      await fetch(`${API_BASE}/config/shipping-costs`, {
+      await authFetch(`${API_BASE}/config/shipping-costs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, name, cost_per_order })
@@ -254,7 +251,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
     setSavingAds(true);
     try {
       const date = `${adSpendsInput.monthYear}-01`;
-      await fetch(`${API_BASE}/config/ad-spends`, {
+      await authFetch(`${API_BASE}/config/ad-spends`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
