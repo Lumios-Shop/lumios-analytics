@@ -11,26 +11,13 @@ import { saveBatchAdSpends } from './adSpendService.js';
  */
 
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes de cache pour le jour J
+const activeSyncPromises = new Map();
 
 /**
- * Synchronise les données pour une période donnée et renvoie le récapitulatif agrégé.
- * @param {string} startDate - Format YYYY-MM-DD
- * @param {string} endDate - Format YYYY-MM-DD
- * @param {boolean} forceRefresh - Forcer la synchronisation avec les API
+ * Exécute la synchronisation en direct des API avec gestion de verrou anti-doublon.
  */
-export async function syncAndGetSalesData(startDate, endDate, forceRefresh = false, granularity = 'daily') {
+async function performSync(startDate, endDate) {
   const db = getDb();
-  
-  const requestedDates = [];
-  let current = new Date(startDate);
-  const end = new Date(endDate);
-
-  while (current <= end) {
-    const dateStr = current.toISOString().split('T')[0];
-    requestedDates.push(dateStr);
-    current.setDate(current.getDate() + 1);
-  }
-
   console.log(`Synchronisation en direct des API Shopify, Amazon, Meta Ads, Amazon Ads et Google Ads pour la période : ${startDate} au ${endDate}`);
   
   try {
@@ -54,154 +41,195 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       await saveBatchAdSpends(googleAdsData);
     }
 
-    // Supprimer les données obsolètes ou de simulation sur la période synchronisée
-    await db.run(
-      `DELETE FROM daily_sku_sales WHERE date BETWEEN ? AND ?`,
-      [startDate, endDate]
-    );
+    const insertStmt = await db.prepare(`
+      INSERT OR REPLACE INTO daily_sku_sales (
+        date, sku, source, order_count, sales_count, revenue, fees, shipping_cost,
+        discounts, returns, cb_orders, paypal_orders, domicile_orders, relais_orders,
+        cb_revenue, paypal_revenue, domicile_revenue, relais_revenue
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-        const insertStmt = await db.prepare(`
-          INSERT OR REPLACE INTO daily_sku_sales (
-            date, sku, source, order_count, sales_count, revenue, fees, shipping_cost,
-            discounts, returns, cb_orders, paypal_orders, domicile_orders, relais_orders,
-            cb_revenue, paypal_revenue, domicile_revenue, relais_revenue
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+    const insertCostStmt = await db.prepare(`
+      INSERT OR IGNORE INTO product_costs (sku, name, source, cogs)
+      VALUES (?, ?, ?, 0.0)
+    `);
 
-        const insertCostStmt = await db.prepare(`
-          INSERT OR IGNORE INTO product_costs (sku, name, source, cogs)
-          VALUES (?, ?, ?, 0.0)
-        `);
-
-        // Traiter les données Shopify
-        for (const item of shopifyData) {
-          await insertStmt.run(
-            item.date,
-            item.sku,
-            'shopify',
-            Math.round((item.orderCount || 1) * 100) / 100,
-            item.salesCount,
-            item.revenue,
-            item.fees,
-            item.shippingCost || 0.0,
-            item.discounts || 0.0,
-            item.returns || 0.0,
-            Math.round((item.cbOrders || 0) * 100) / 100,
-            Math.round((item.paypalOrders || 0) * 100) / 100,
-            Math.round((item.domicileOrders || 0) * 100) / 100,
-            Math.round((item.relaisOrders || 0) * 100) / 100,
-            item.cbRevenue || 0.0,
-            item.paypalRevenue || 0.0,
-            item.domicileRevenue || 0.0,
-            item.relaisRevenue || 0.0
-          );
-          await insertCostStmt.run(item.sku, item.name, 'shopify');
-        }
-
-        // Traiter les données Amazon
-        for (const item of amazonData) {
-          await insertStmt.run(
-            item.date,
-            item.sku,
-            'amazon',
-            item.orderCount || 1,
-            item.salesCount,
-            item.revenue,
-            item.fees,
-            item.shippingCost || 0.0,
-            0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0
-          );
-          await insertCostStmt.run(item.sku, item.name, 'amazon');
-        }
-
-        await insertStmt.finalize();
-        await insertCostStmt.finalize();
-
-        // Sauvegarder les commandes individuelles détaillées dans orders_cache
-        try {
-          await db.run(`DELETE FROM orders_cache WHERE date BETWEEN ? AND ?`, [startDate, endDate]);
-          const insertOrderStmt = await db.prepare(`
-            INSERT OR REPLACE INTO orders_cache (
-              order_id, order_number, source, date, created_at,
-              total_price, items_count, items_summary, items_json,
-              payment_method, shipping_method, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `);
-
-          if (shopifyData.rawOrders) {
-            for (const order of shopifyData.rawOrders) {
-              const orderDate = new Date(order.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
-              const items = (order.line_items || []).map(li => ({
-                title: li.title,
-                sku: li.sku || 'LUMIOS01',
-                quantity: li.quantity || 1,
-                price: parseFloat(li.price || 0)
-              }));
-              const totalItemsCount = items.reduce((sum, it) => sum + it.quantity, 0);
-              const itemsSummary = items.map(it => `${it.quantity}x ${it.title}`).join(', ');
-              const paymentMethod = (order.payment_gateway_names || []).join(', ') || 'CB';
-              const shippingMethod = order.shipping_lines?.[0]?.title || 'Standard';
-
-              await insertOrderStmt.run(
-                `shopify_${order.id}`,
-                order.name || `#${order.id}`,
-                'shopify',
-                orderDate,
-                order.created_at,
-                parseFloat(order.total_price || 0),
-                totalItemsCount,
-                itemsSummary,
-                JSON.stringify(items),
-                paymentMethod,
-                shippingMethod,
-                order.financial_status || 'paid'
-              );
-            }
-          }
-
-          if (amazonData.rawOrders) {
-            for (const order of amazonData.rawOrders) {
-              const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
-              const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
-              const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
-              const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
-              const items = [{
-                title: 'Lumios - Le Jeu',
-                sku: 'AMAZON-DEFAULT',
-                quantity: qty,
-                price: 40.00
-              }];
-
-              await insertOrderStmt.run(
-                `amazon_${order.AmazonOrderId}`,
-                order.AmazonOrderId,
-                'amazon',
-                orderDate,
-                order.PurchaseDate,
-                revenue,
-                qty,
-                `${qty}x Lumios - Le Jeu`,
-                JSON.stringify(items),
-                'Amazon Pay',
-                order.FulfillmentChannel === 'AFN' ? 'Expédié par Amazon (FBA)' : 'Expédié par Vendeur (FBM)',
-                order.OrderStatus || 'Shipped'
-              );
-            }
-          }
-
-          await insertOrderStmt.finalize();
-        } catch (ordersErr) {
-          console.error("Erreur lors de la mise en cache des commandes détaillées :", ordersErr);
-        }
-
-        await db.run(
-          `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
-          [Date.now().toString()]
+    // Traiter les données Shopify (uniquement si reçues pour ne jamais écraser la DB en cas d'erreur)
+    if (shopifyData && shopifyData.length > 0) {
+      await db.run(
+        `DELETE FROM daily_sku_sales WHERE source = 'shopify' AND date BETWEEN ? AND ?`,
+        [startDate, endDate]
+      );
+      for (const item of shopifyData) {
+        await insertStmt.run(
+          item.date,
+          item.sku,
+          'shopify',
+          Math.round((item.orderCount || 1) * 100) / 100,
+          item.salesCount,
+          item.revenue,
+          item.fees,
+          item.shippingCost || 0.0,
+          item.discounts || 0.0,
+          item.returns || 0.0,
+          Math.round((item.cbOrders || 0) * 100) / 100,
+          Math.round((item.paypalOrders || 0) * 100) / 100,
+          Math.round((item.domicileOrders || 0) * 100) / 100,
+          Math.round((item.relaisOrders || 0) * 100) / 100,
+          item.cbRevenue || 0.0,
+          item.paypalRevenue || 0.0,
+          item.domicileRevenue || 0.0,
+          item.relaisRevenue || 0.0
         );
-      } catch (err) {
-        console.error("Erreur lors de la synchronisation avec les API :", err);
+        await insertCostStmt.run(item.sku, item.name, 'shopify');
       }
+    }
+
+    // Traiter les données Amazon (uniquement si reçues pour ne jamais supprimer les ventes enregistrées)
+    if (amazonData && amazonData.length > 0) {
+      await db.run(
+        `DELETE FROM daily_sku_sales WHERE source = 'amazon' AND date BETWEEN ? AND ?`,
+        [startDate, endDate]
+      );
+      for (const item of amazonData) {
+        await insertStmt.run(
+          item.date,
+          item.sku,
+          'amazon',
+          item.orderCount || 1,
+          item.salesCount,
+          item.revenue,
+          item.fees,
+          item.shippingCost || 0.0,
+          0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0
+        );
+        await insertCostStmt.run(item.sku, item.name, 'amazon');
+      }
+    }
+
+    await insertStmt.finalize();
+    await insertCostStmt.finalize();
+
+    // Sauvegarder les commandes individuelles détaillées dans orders_cache
+    try {
+      const insertOrderStmt = await db.prepare(`
+        INSERT OR REPLACE INTO orders_cache (
+          order_id, order_number, source, date, created_at,
+          total_price, items_count, items_summary, items_json,
+          payment_method, shipping_method, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      if (shopifyData && shopifyData.rawOrders && shopifyData.rawOrders.length > 0) {
+        await db.run(`DELETE FROM orders_cache WHERE source = 'shopify' AND date BETWEEN ? AND ?`, [startDate, endDate]);
+        for (const order of shopifyData.rawOrders) {
+          const orderDate = new Date(order.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+          const items = (order.line_items || []).map(li => ({
+            title: li.title,
+            sku: li.sku || 'LUMIOS01',
+            quantity: li.quantity || 1,
+            price: parseFloat(li.price || 0)
+          }));
+          const totalItemsCount = items.reduce((sum, it) => sum + it.quantity, 0);
+          const itemsSummary = items.map(it => `${it.quantity}x ${it.title}`).join(', ');
+          const paymentMethod = (order.payment_gateway_names || []).join(', ') || 'CB';
+          const shippingMethod = order.shipping_lines?.[0]?.title || 'Standard';
+
+          await insertOrderStmt.run(
+            `shopify_${order.id}`,
+            order.name || `#${order.id}`,
+            'shopify',
+            orderDate,
+            order.created_at,
+            parseFloat(order.total_price || 0),
+            totalItemsCount,
+            itemsSummary,
+            JSON.stringify(items),
+            paymentMethod,
+            shippingMethod,
+            order.financial_status || 'paid'
+          );
+        }
+      }
+
+      if (amazonData && amazonData.rawOrders && amazonData.rawOrders.length > 0) {
+        await db.run(`DELETE FROM orders_cache WHERE source = 'amazon' AND date BETWEEN ? AND ?`, [startDate, endDate]);
+        for (const order of amazonData.rawOrders) {
+          const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+          const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
+          const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
+          const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
+          const items = [{
+            title: 'Lumios - Le Jeu',
+            sku: 'AMAZON-DEFAULT',
+            quantity: qty,
+            price: 40.00
+          }];
+
+          await insertOrderStmt.run(
+            `amazon_${order.AmazonOrderId}`,
+            order.AmazonOrderId,
+            'amazon',
+            orderDate,
+            order.PurchaseDate,
+            revenue,
+            qty,
+            `${qty}x Lumios - Le Jeu`,
+            JSON.stringify(items),
+            'Amazon Pay',
+            order.FulfillmentChannel === 'AFN' ? 'Expédié par Amazon (FBA)' : 'Expédié par Vendeur (FBM)',
+            order.OrderStatus || 'Shipped'
+          );
+        }
+      }
+
+      await insertOrderStmt.finalize();
+    } catch (ordersErr) {
+      console.error("Erreur lors de la mise en cache des commandes détaillées :", ordersErr);
+    }
+
+    await db.run(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
+      [Date.now().toString()]
+    );
+  } catch (err) {
+    console.error("Erreur lors de la synchronisation avec les API :", err);
+  }
+}
+
+/**
+ * Synchronise les données pour une période donnée et renvoie le récapitulatif agrégé.
+ * @param {string} startDate - Format YYYY-MM-DD
+ * @param {string} endDate - Format YYYY-MM-DD
+ * @param {boolean} forceRefresh - Forcer la synchronisation avec les API
+ */
+export async function syncAndGetSalesData(startDate, endDate, forceRefresh = false, granularity = 'daily') {
+  const requestedDates = [];
+  let current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const dateStr = current.toISOString().split('T')[0];
+    requestedDates.push(dateStr);
+    current.setDate(current.getDate() + 1);
+  }
+
+  const syncKey = `${startDate}_${endDate}`;
+  if (activeSyncPromises.has(syncKey)) {
+    // Si une synchronisation identique est déjà en cours, attendre sa fin
+    await activeSyncPromises.get(syncKey);
+  } else {
+    const promise = performSync(startDate, endDate);
+    activeSyncPromises.set(syncKey, promise);
+    try {
+      await promise;
+    } finally {
+      activeSyncPromises.delete(syncKey);
+    }
+  }
+
+  const db = getDb();
 
   // 5. Récupérer les données agrégées et calculer la marge avec les COGS, frais d'expédition et dépenses Ads
   const salesQuery = `
