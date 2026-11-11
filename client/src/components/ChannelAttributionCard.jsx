@@ -76,7 +76,7 @@ export default function ChannelAttributionCard({ salesData = [] }) {
               Attribution Déclarative Régies : Meta Pixel & Google Ads
             </h4>
             <p className="text-xs text-slate-500 font-medium">
-              Commandes, quantité de produits vendus par commande, CPA par Commande et CPA par Produit Vendu (Target ≤ 9 €)
+              Commandes, quantité de produits vendus par commande, CPA commande et CPA ventes (Target ≤ 9 €)
             </p>
           </div>
         </div>
@@ -157,11 +157,11 @@ export default function ChannelAttributionCard({ salesData = [] }) {
 
           <div className="pt-2 border-t border-blue-100/80 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-600">CPA par Commande :</span>
+              <span className="font-semibold text-slate-600">CPA commande :</span>
               <span className="font-extrabold text-slate-900">{formatCurrency(metaCpaOrder)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-700">CPA par Produit Vendu :</span>
+              <span className="font-bold text-slate-700">CPA ventes (Target ≤ 9 €) :</span>
               <span className={`px-2.5 py-0.5 rounded-full font-black border ${getCpaBadgeStyle(metaCpaUnit)}`}>
                 {formatCurrency(metaCpaUnit)}
               </span>
@@ -220,11 +220,11 @@ export default function ChannelAttributionCard({ salesData = [] }) {
 
           <div className="pt-2 border-t border-rose-100/80 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-600">CPA par Commande :</span>
+              <span className="font-semibold text-slate-600">CPA commande :</span>
               <span className="font-extrabold text-slate-900">{formatCurrency(googleCpaOrder)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-700">CPA par Produit Vendu :</span>
+              <span className="font-bold text-slate-700">CPA ventes (Target ≤ 9 €) :</span>
               <span className={`px-2.5 py-0.5 rounded-full font-black border ${getCpaBadgeStyle(googleCpaUnit)}`}>
                 {formatCurrency(googleCpaUnit)}
               </span>
@@ -283,13 +283,13 @@ export default function ChannelAttributionCard({ salesData = [] }) {
 
           <div className="pt-2 border-t border-amber-100/80 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-600">CPA par Commande :</span>
+              <span className="font-semibold text-slate-600">CPA commande :</span>
               <span className="font-extrabold text-slate-900">
                 {totals.amazonAds > 0 ? formatCurrency(amazonCpaOrder) : 'En attente API'}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-700">CPA par Produit Vendu :</span>
+              <span className="font-bold text-slate-700">CPA ventes (Target ≤ 9 €) :</span>
               <span className={`px-2.5 py-0.5 rounded-full font-black border ${getCpaBadgeStyle(amazonCpaUnit)}`}>
                 {totals.amazonAds > 0 ? formatCurrency(amazonCpaUnit) : '—'}
               </span>

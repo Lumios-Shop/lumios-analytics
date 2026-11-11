@@ -95,7 +95,7 @@ export default function UnitEconomicsCard({ salesData = [] }) {
           </div>
           <div className="bg-slate-800/90 border border-slate-700 px-4 py-2 rounded-2xl text-right">
             <div className="flex items-center justify-end gap-1.5 text-[10px] uppercase font-bold text-slate-400">
-              <span>CPA Moyen / Produit</span>
+              <span>CPA ventes</span>
               <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
                 globalCpa > 0 && globalCpa <= 9 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
               }`}>

@@ -8,9 +8,8 @@ import { RefreshCw, AlertCircle } from 'lucide-react';
 import PerformancePnlTable from './PerformancePnlTable';
 import PaymentsAnalyticsTab from './PaymentsAnalyticsTab';
 import ShippingAnalyticsTab from './ShippingAnalyticsTab';
-import MarginCalculatorTab from './MarginCalculatorTab';
 import OrdersDetailSection from './OrdersDetailSection';
-import { BarChart3, CreditCard, Truck, Calculator, Layers } from 'lucide-react';
+import { BarChart3, Truck, Target, Layers } from 'lucide-react';
 import { authFetch, getApiBase } from '../utils/api';
 
 const API_BASE = getApiBase();
@@ -169,6 +168,18 @@ export default function Dashboard({ refreshTrigger }) {
         </button>
 
         <button
+          onClick={() => setActiveTab('attribution')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            activeTab === 'attribution'
+              ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/80'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          Attribution Régies (Meta & Google)
+        </button>
+
+        <button
           onClick={() => setActiveTab('orders')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
             activeTab === 'orders'
@@ -191,18 +202,6 @@ export default function Dashboard({ refreshTrigger }) {
           <Truck className="w-4 h-4" />
           Livraisons & Transport (Domicile, Relais, Express)
         </button>
-
-        <button
-          onClick={() => setActiveTab('margin')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'margin'
-              ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/80'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
-        >
-          <Calculator className="w-4 h-4" />
-          Marge Nette & TVA
-        </button>
       </div>
 
       {error && (
@@ -223,33 +222,31 @@ export default function Dashboard({ refreshTrigger }) {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* ONGLET 1: VUE GLOBALE & PERFORMANCE */}
+          {/* ONGLET 1: VUE GLOBALE & PERFORMANCE (ÉPURÉE) */}
           {activeTab === 'overview' && (
             <>
-              {/* KPI CARDS */}
+              {/* KPI CARDS (COMMANDES, CA, ROAS & CPA VENTES/COMMANDE) */}
               <KpiCards data={salesData} />
 
-              {/* GRAPHIQUE VISUEL DYNAMIQUE DE CA & MARGE */}
+              {/* GRAPHIQUE VISUEL DYNAMIQUE DE CA & COMMANDES */}
               <div className="grid grid-cols-1 gap-6">
                 <SalesChart data={salesData} granularity={filter.granularity} />
               </div>
 
-              {/* ATTRIBUTION DÉCLARATIVE RÉGIES (META PIXEL & GOOGLE ADS) */}
-              <ChannelAttributionCard salesData={salesData} />
-
-              {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L (STRICTEMENT MENSUEL) */}
+              {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L AVEC MENUS DÉPLIANTS */}
               <PerformancePnlTable data={monthlySalesData} granularity="monthly" />
-
-              {/* SECTION DÉTAIL DES COMMANDES DIRECTEMENT ACCESSIBLE */}
-              <OrdersDetailSection
-                startDate={filter.startDate}
-                endDate={filter.endDate}
-                refreshTrigger={refreshTrigger}
-              />
             </>
           )}
 
-          {/* ONGLET DÉDIÉ : DÉTAIL DES COMMANDES ET PRODUITS VENDUS */}
+          {/* ONGLET 2: ATTRIBUTION DÉCLARATIVE RÉGIES (META PIXEL & GOOGLE ADS) + UNIT ECONOMICS */}
+          {activeTab === 'attribution' && (
+            <div className="space-y-6">
+              <ChannelAttributionCard salesData={salesData} />
+              <UnitEconomicsCard salesData={salesData} />
+            </div>
+          )}
+
+          {/* ONGLET 3: DÉTAIL DES COMMANDES ET PRODUITS VENDUS */}
           {activeTab === 'orders' && (
             <OrdersDetailSection
               startDate={filter.startDate}
@@ -258,14 +255,9 @@ export default function Dashboard({ refreshTrigger }) {
             />
           )}
 
-          {/* ONGLET 2: REPARTITION ET COÛTS DE LIVRAISON */}
+          {/* ONGLET 4: REPARTITION ET COÛTS DE LIVRAISON */}
           {activeTab === 'shipping' && (
             <ShippingAnalyticsTab data={salesData} />
-          )}
-
-          {/* ONGLET 3: CALCULATEUR DE MARGE NETTE & TVA */}
-          {activeTab === 'margin' && (
-            <MarginCalculatorTab data={salesData} />
           )}
         </div>
       )}
