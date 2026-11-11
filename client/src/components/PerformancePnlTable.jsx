@@ -375,12 +375,38 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
               })}
             </tr>
             <tr className="bg-slate-900 text-white font-black border-t border-slate-800">
-              <td className="px-6 py-3 text-xs uppercase">CPA Moyen par Vente</td>
-              {sortedData.map((col) => (
-                <td key={col.date} className="px-4 py-3 text-center text-amber-300 font-extrabold text-xs">
-                  {col.cpa ? formatCurrency(col.cpa) : '0 €'}
-                </td>
-              ))}
+              <td className="px-6 py-3 text-xs uppercase flex items-center gap-2">
+                <span>CPA Moyen par Quantité produits vendus</span>
+                <span title="Dépenses Ads totales / Total des produits vendus (Target : ≤ 9 € / produit)" className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-amber-500/30 text-amber-300 rounded-full cursor-help">
+                  ?
+                </span>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 ml-auto">
+                  Target ≤ 9 €
+                </span>
+              </td>
+              {sortedData.map((col) => {
+                const productsCount = col.totalSalesCount || 0;
+                const adsSpend = col.totalAdsSpend || 0;
+                const cpaPerProduct = productsCount > 0 && adsSpend > 0
+                  ? (adsSpend / productsCount)
+                  : (col.cpa || 0);
+
+                const isGood = cpaPerProduct > 0 && cpaPerProduct <= 9;
+                const isWarning = cpaPerProduct > 9 && cpaPerProduct <= 12;
+
+                return (
+                  <td key={col.date} className="px-4 py-3 text-center text-xs">
+                    <span className={`px-2.5 py-1 rounded-full font-black ${
+                      isGood ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                      isWarning ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                      cpaPerProduct > 12 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
+                      'text-slate-400'
+                    }`}>
+                      {cpaPerProduct ? formatCurrency(cpaPerProduct) : '0 €'}
+                    </span>
+                  </td>
+                );
+              })}
             </tr>
           </tbody>
         </table>

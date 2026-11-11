@@ -94,8 +94,19 @@ export default function UnitEconomicsCard({ salesData = [] }) {
             <div className="text-base font-black text-emerald-400">{globalRoas ? `${globalRoas.toFixed(2)}x` : 'N/A'}</div>
           </div>
           <div className="bg-slate-800/90 border border-slate-700 px-4 py-2 rounded-2xl text-right">
-            <div className="text-[10px] uppercase font-bold text-slate-400">CPA Moyen</div>
-            <div className="text-base font-black text-amber-400">{formatCurrency(globalCpa)}</div>
+            <div className="flex items-center justify-end gap-1.5 text-[10px] uppercase font-bold text-slate-400">
+              <span>CPA Moyen / Produit</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                globalCpa > 0 && globalCpa <= 9 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+              }`}>
+                Target ≤ 9 €
+              </span>
+            </div>
+            <div className={`text-base font-black ${
+              globalCpa > 0 && globalCpa <= 9 ? 'text-emerald-400' : 'text-amber-400'
+            }`}>
+              {formatCurrency(globalCpa)}
+            </div>
           </div>
         </div>
       </div>
@@ -130,7 +141,7 @@ export default function UnitEconomicsCard({ salesData = [] }) {
               <span className="font-bold text-red-400">-{formatCurrency(globalShippingPerSale)}</span>
             </div>
             <div className="flex justify-between pt-1">
-              <span className="text-slate-400">Coût Publicitaire (CPA)</span>
+              <span className="text-slate-400">Coût Publicitaire (CPA / Produit)</span>
               <span className="font-bold text-amber-400">-{formatCurrency(globalCpa)}</span>
             </div>
             <div className="flex justify-between pt-2 text-sm font-black">
@@ -170,7 +181,7 @@ export default function UnitEconomicsCard({ salesData = [] }) {
               <span className="font-bold text-red-400">-{formatCurrency(shopifyShippingPerSale)}</span>
             </div>
             <div className="flex justify-between pt-1">
-              <span className="text-slate-400">CPA Meta / Google Ads</span>
+              <span className="text-slate-400">CPA Meta & Google / Produit</span>
               <span className="font-bold text-amber-400">-{formatCurrency(shopifyAdsPerSale)}</span>
             </div>
             <div className="flex justify-between pt-2 text-xs font-bold">
@@ -210,7 +221,7 @@ export default function UnitEconomicsCard({ salesData = [] }) {
               <span className="font-bold text-red-400">-{formatCurrency(amazonShippingPerSale)}</span>
             </div>
             <div className="flex justify-between pt-1">
-              <span className="text-slate-400">CPA Amazon Ads</span>
+              <span className="text-slate-400">CPA Amazon Ads / Produit</span>
               <span className="font-bold text-amber-400">-{formatCurrency(amazonAdsPerSale)}</span>
             </div>
             <div className="flex justify-between pt-2 text-xs font-bold">

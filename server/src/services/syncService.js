@@ -376,7 +376,8 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const margin = netRevenue - totalFees - totalCogs - totalShipping - totalAdsSpend;
 
     const roas = totalAdsSpend > 0 ? parseFloat((netRevenue / totalAdsSpend).toFixed(2)) : 0;
-    const cpa = totalOrdersCount > 0 && totalAdsSpend > 0 ? parseFloat((totalAdsSpend / totalOrdersCount).toFixed(2)) : 0;
+    // CPA calculé sur la quantité réelle de produits vendus (target business : ≤ 9€ / produit vendu)
+    const cpa = totalSalesCount > 0 && totalAdsSpend > 0 ? parseFloat((totalAdsSpend / totalSalesCount).toFixed(2)) : 0;
 
     dailyResults.push({
       date: dateStr,
@@ -512,7 +513,8 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
 
   return Object.values(groupedMap).map(g => {
     const roas = g.totalAdsSpend > 0 ? parseFloat((g.totalRevenue / g.totalAdsSpend).toFixed(2)) : 0;
-    const cpa = g.totalOrdersCount > 0 && g.totalAdsSpend > 0 ? parseFloat((g.totalAdsSpend / g.totalOrdersCount).toFixed(2)) : 0;
+    // CPA agrégé sur la quantité de produits vendus
+    const cpa = g.totalSalesCount > 0 && g.totalAdsSpend > 0 ? parseFloat((g.totalAdsSpend / g.totalSalesCount).toFixed(2)) : 0;
     
     return {
       ...g,
