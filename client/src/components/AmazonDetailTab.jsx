@@ -14,7 +14,6 @@ import {
   FileSpreadsheet,
   RefreshCw,
   ArrowRightLeft,
-  Truck,
   TrendingUp
 } from 'lucide-react';
 import {
@@ -325,10 +324,10 @@ export default function AmazonDetailTab() {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">
-              Détail Amazon Seller Central — Coûts Réels, Expédition FBA & Vrai ROI
+              Détail Amazon Seller Central — Coûts Réels & Vrai ROI
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Comparatif des coûts d'expédition FBA vs Shopify et calcul du ROI net complet (Pub, Commissions, FBA, Stockage, COGS)
+              Calcul de la rentabilité nette réelle (Revenus, Remises, Remboursements, Commissions, FBA, Stockage, Ads, COGS)
             </p>
           </div>
         </div>
@@ -465,81 +464,6 @@ export default function AmazonDetailTab() {
               <span>€</span>
             </label>
           </div>
-        </div>
-      </div>
-
-      {/* COMPARATIF COÛTS EXPÉDITION : AMAZON FBA VS SHOPIFY DOMICILE VS MONDIAL RELAY */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-200">
-              <Truck className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-extrabold text-slate-900">
-                Comparatif Coût d'Expédition : Amazon FBA Réel vs Shopify (Domicile & Mondial Relay)
-              </h4>
-              <p className="text-xs text-slate-500">
-                Basé sur vos factures réelles « Frais Expédié par Amazon » des 4 relevés CSV mensuels
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-extrabold uppercase text-emerald-700">Shopify — Mondial Relay</div>
-              <div className="text-2xl font-black text-emerald-900 mt-1">{formatCurrency(shippingRates.relais)}</div>
-              <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Par commande</div>
-            </div>
-            <span className="text-xs font-black bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-200">
-              -{formatCurrency(Math.max(0, avgFbaPerUnitGlobal - shippingRates.relais))} vs FBA
-            </span>
-          </div>
-
-          <div className="bg-indigo-50/50 border border-indigo-200/80 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-extrabold uppercase text-indigo-700">Shopify — Domicile</div>
-              <div className="text-2xl font-black text-indigo-900 mt-1">{formatCurrency(shippingRates.domicile)}</div>
-              <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">Colissimo / Chronopost</div>
-            </div>
-            <span className="text-xs font-black bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full border border-indigo-200">
-              -{formatCurrency(Math.max(0, avgFbaPerUnitGlobal - shippingRates.domicile))} vs FBA
-            </span>
-          </div>
-
-          <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-extrabold uppercase text-amber-800">Amazon FBA Réel</div>
-              <div className="text-2xl font-black text-amber-950 mt-1">{formatCurrency(avgFbaPerUnitGlobal)}</div>
-              <div className="text-[11px] text-amber-800 font-semibold mt-0.5">
-                / produit ({formatCurrency(avgFbaPerOrderGlobal)} / cmd)
-              </div>
-            </div>
-            <span className="text-[11px] font-black bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300">
-              Total : {formatCurrency(summary.fbaFees)}
-            </span>
-          </div>
-        </div>
-
-        {/* BARRE MENSUELLE DES COÛTS FBA */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-          {sortedChrono.map(r => {
-            const m = computeMetrics(r);
-            return (
-              <div key={r.period_key} className="bg-slate-50 border border-slate-200/70 rounded-xl p-3 text-xs">
-                <div className="font-extrabold text-slate-800">{r.period_label}</div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-amber-700 font-black text-sm">{formatCurrency(m.avgFbaPerUnit)}/u</span>
-                  <span className="text-[10px] text-slate-500 font-semibold">{m.units} prod.</span>
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">
-                  {formatCurrency(m.avgFbaPerOrder)} / cmd • Total {formatCurrency(m.fbaFees)}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
 
