@@ -75,7 +75,7 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
             <BarChart2 className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-base font-extrabold text-slate-900">Tableau de Suivi Financier & Performance Ads (P&L)</h4>
+            <h4 className="text-base font-extrabold text-slate-900">Performance Ads (P&L)</h4>
             <p className="text-xs text-slate-500 font-medium">Cliquez sur n'importe quelle ligne pour déplier le détail Shopify / Amazon ou régies</p>
           </div>
         </div>
