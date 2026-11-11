@@ -341,34 +341,10 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                   })}
                 </tr>
                 <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
-                  <td className="px-10 py-2 text-red-600">Réductions Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})</td>
-                  {sortedData.map((col) => {
-                    const discTtc = col.amazonDiscounts || 0;
-                    const val = displayMode === 'ht' ? discTtc / 1.085 : discTtc;
-                    return (
-                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
-                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
                   <td className="px-10 py-2 text-red-600">Retours & Annulations Shopify ({displayMode === 'ht' ? 'HT' : 'TTC'})</td>
                   {sortedData.map((col) => {
                     const retTtc = col.shopifyReturns || 0;
                     const val = displayMode === 'ht' ? (retTtc > 0 ? (retTtc > 10 ? retTtc : 66.66) : 0) : retTtc;
-                    return (
-                      <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
-                        {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr className="bg-red-50/20 text-slate-600 text-[11px] animate-fadeIn">
-                  <td className="px-10 py-2 text-red-600">Retours & Annulations Amazon ({displayMode === 'ht' ? 'HT' : 'TTC'})</td>
-                  {sortedData.map((col) => {
-                    const retTtc = col.amazonReturns || 0;
-                    const val = displayMode === 'ht' ? retTtc / vatFactor : retTtc;
                     return (
                       <td key={col.date} className="px-4 py-2 text-center text-red-600 font-semibold">
                         {val > 0 ? `-${formatCurrency(val)}` : '0 €'}
