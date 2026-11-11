@@ -200,7 +200,35 @@ export async function initDb() {
     );
   `);
 
-  // Pré-remplir avec les 2 rapports fournis (Septembre 2026 & Octobre 2026) s'ils n'existent pas encore
+  // Pré-remplir avec les 4 rapports fournis (Juillet à Octobre 2026) s'ils n'existent pas encore
+  await db.run(`
+    INSERT OR IGNORE INTO amazon_monthly_reports (
+      period_key, period_label, date_range,
+      revenues_total, product_sales, product_refunds, fba_inventory_credit, shipping_credits, promo_rebates,
+      expenses_total, selling_fees, fba_transaction_fees, storage_fees, ad_spend, service_fees, other_fees,
+      taxes_total, taxes_collected, taxes_refunded, transfers_total, uploaded_at
+    ) VALUES (
+      '2026-07', 'Juillet 2026', 'Jul 1, 2026 - Jul 31, 2026',
+      5037.81, 5099.52, -66.66, 0.00, 80.23, -75.28,
+      -2982.35, -1087.20, -1081.18, -118.96, -536.49, -46.80, -111.72,
+      1000.34, 1016.58, -16.24, 123.42, '2026-11-11T22:00:00Z'
+    )
+  `);
+
+  await db.run(`
+    INSERT OR IGNORE INTO amazon_monthly_reports (
+      period_key, period_label, date_range,
+      revenues_total, product_sales, product_refunds, fba_inventory_credit, shipping_credits, promo_rebates,
+      expenses_total, selling_fees, fba_transaction_fees, storage_fees, ad_spend, service_fees, other_fees,
+      taxes_total, taxes_collected, taxes_refunded, transfers_total, uploaded_at
+    ) VALUES (
+      '2026-08', 'Août 2026', 'Aug 1, 2026 - Aug 31, 2026',
+      12296.06, 13612.06, -569.11, 0.00, 203.08, -949.97,
+      -7864.64, -1931.81, -2961.44, -271.33, -2467.51, -66.34, -166.21,
+      2446.33, 2563.25, -116.92, 5564.68, '2026-11-11T22:00:00Z'
+    )
+  `);
+
   await db.run(`
     INSERT OR IGNORE INTO amazon_monthly_reports (
       period_key, period_label, date_range,

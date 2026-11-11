@@ -193,7 +193,44 @@ export async function parseAmazonSummaryPdf(pdfBuffer) {
 
 export async function getAllAmazonMonthlyReports() {
   const db = getDb();
-  return db.all(`SELECT * FROM amazon_monthly_reports ORDER BY period_key DESC`);
+  const reports = await db.all(`SELECT * FROM amazon_monthly_reports ORDER BY period_key DESC`);
+  const txStats = await db.all(`
+    SELECT
+      period_key,
+      SUM(CASE WHEN tx_type = 'Commande' THEN 1 ELSE 0 END) as csv_orders,
+      SUM(CASE WHEN tx_type = 'Commande' THEN quantity ELSE 0 END) as csv_units,
+      SUM(CASE WHEN tx_type = 'Commande' THEN ABS(fba_fees) ELSE 0.0 END) as csv_fba_fees,
+      SUM(CASE WHEN tx_type = 'Commande' THEN ABS(selling_fees) ELSE 0.0 END) as csv_selling_fees,
+      SUM(CASE WHEN tx_type = 'Commande' THEN ABS(other_fees) ELSE 0.0 END) as csv_other_fees,
+      SUM(CASE WHEN tx_type = 'Frais de service' AND LOWER(description) LIKE '%publicit%' THEN ABS(other_fees) ELSE 0.0 END) as csv_ads_ht,
+      SUM(CASE WHEN tx_type = 'Frais de service' AND LOWER(description) LIKE '%publicit%' THEN ABS(total_payout) ELSE 0.0 END) as csv_ads_ttc
+    FROM amazon_transactions
+    GROUP BY period_key
+  `);
+
+  const statsMap = {};
+  txStats.forEach(s => { statsMap[s.period_key] = s; });
+
+  const cogsRow = await db.get(`SELECT cogs FROM product_costs WHERE source = 'amazon' AND cogs > 0 ORDER BY cogs DESC LIMIT 1`);
+  const defaultUnitCogs = cogsRow?.cogs || 8.0;
+
+  return reports.map(r => {
+    const st = statsMap[r.period_key] || {};
+    const orders = st.csv_orders || 0;
+    const units = st.csv_units || 0;
+    const fbaFees = st.csv_fba_fees || Math.abs(r.fba_transaction_fees || 0);
+    return {
+      ...r,
+      csv_orders: orders,
+      csv_units: units,
+      csv_fba_fees: Math.round(fbaFees * 100) / 100,
+      csv_avg_fba_per_unit: units > 0 ? Math.round((fbaFees / units) * 100) / 100 : 0,
+      csv_avg_fba_per_order: orders > 0 ? Math.round((fbaFees / orders) * 100) / 100 : 0,
+      csv_ads_ht: Math.round((st.csv_ads_ht || 0) * 100) / 100,
+      csv_ads_ttc: Math.round((st.csv_ads_ttc || Math.abs(r.ad_spend || 0)) * 100) / 100,
+      default_unit_cogs: defaultUnitCogs
+    };
+  });
 }
 
 export async function saveAmazonMonthlyReport(report) {
@@ -238,7 +275,7 @@ export async function deleteAmazonMonthlyReport(periodKey) {
   await db.run(`DELETE FROM amazon_monthly_reports WHERE period_key = ?`, [periodKey]);
 }
 
-function parseSemicolonCsvLine(line) {
+function parseCsvLine(line, sep = ';') {
   const result = [];
   let cur = '';
   let inQuotes = false;
@@ -251,7 +288,7 @@ function parseSemicolonCsvLine(line) {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (ch === ';' && !inQuotes) {
+    } else if (ch === sep && !inQuotes) {
       result.push(cur.trim());
       cur = '';
     } else {
@@ -281,16 +318,17 @@ function parseAmazonFrenchDate(str) {
 
 export async function importAmazonTransactionsCsv(csvText) {
   const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
-  // Trouver la véritable ligne d'en-tête contenant "date/heure;" et ";type;"
+  // Trouver la véritable ligne d'en-tête contenant "date/heure" et ("type" ou "numéro de la commande")
   const headerIdx = lines.findIndex(l => {
     const low = l.toLowerCase();
-    return low.includes('date/heure;') && (low.includes(';type;') || low.includes('numéro de la commande'));
+    return low.includes('date/heure') && (low.includes(';type;') || low.includes('"type"') || low.includes('numéro de la commande'));
   });
   if (headerIdx === -1) {
-    throw new Error("Format CSV Amazon invalide : en-tête 'date/heure;...;type' introuvable.");
+    throw new Error("Format CSV Amazon invalide : en-tête 'date/heure ... type' introuvable.");
   }
 
-  const headerCols = parseSemicolonCsvLine(lines[headerIdx]).map(h => h.toLowerCase().trim());
+  const sep = lines[headerIdx].includes(';') ? ';' : ',';
+  const headerCols = parseCsvLine(lines[headerIdx], sep).map(h => h.toLowerCase().trim());
   const idx = (namePart) => headerCols.findIndex(h => h.includes(namePart.toLowerCase()));
 
   const iDate = 0;
@@ -316,7 +354,7 @@ export async function importAmazonTransactionsCsv(csvText) {
   const periodCounts = {};
 
   for (let i = headerIdx + 1; i < lines.length; i++) {
-    const cols = parseSemicolonCsvLine(lines[i]);
+    const cols = parseCsvLine(lines[i], sep);
     if (cols.length < 15) continue;
 
     const dateInfo = parseAmazonFrenchDate(cols[iDate]);

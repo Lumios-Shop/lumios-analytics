@@ -13,7 +13,9 @@ import {
   Megaphone,
   FileSpreadsheet,
   RefreshCw,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Truck,
+  TrendingUp
 } from 'lucide-react';
 import {
   BarChart,
@@ -31,6 +33,8 @@ const API_BASE = getApiBase();
 
 export default function AmazonDetailTab() {
   const [reports, setReports] = useState([]);
+  const [shippingRates, setShippingRates] = useState({ domicile: 5.50, relais: 3.50 });
+  const [unitCogs, setUnitCogs] = useState(8.0);
   const [loading, setLoading] = useState(true);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [uploadingCsv, setUploadingCsv] = useState(false);
@@ -42,21 +46,34 @@ export default function AmazonDetailTab() {
   const [expanded, setExpanded] = useState({
     revenues: true,
     expenses: true,
-    taxes: false
+    taxes: false,
+    roi: true
   });
 
   const loadReports = async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/amazon/reports`);
-      if (res.ok) {
-        const data = await res.json();
+      const [repRes, shipRes] = await Promise.all([
+        authFetch(`${API_BASE}/amazon/reports`),
+        authFetch(`${API_BASE}/config/shipping-costs`)
+      ]);
+
+      if (repRes.ok) {
+        const data = await repRes.json();
         setReports(data);
-        // Charger le rapprochement pour le mois sélectionné (ou le dernier mois dispo)
+        if (data[0]?.default_unit_cogs) {
+          setUnitCogs(data[0].default_unit_cogs);
+        }
         const targetPeriod = selectedPeriod !== 'all' ? selectedPeriod : (data[0]?.period_key || '2026-10');
         if (targetPeriod) {
           loadReconciliation(targetPeriod);
         }
+      }
+      if (shipRes.ok) {
+        const shipData = await shipRes.json();
+        const dom = shipData.find(s => s.code === 'domicile')?.cost_per_order ?? 5.50;
+        const rel = shipData.find(s => s.code === 'relais')?.cost_per_order ?? 3.50;
+        setShippingRates({ domicile: dom, relais: rel });
       }
     } catch (err) {
       console.error('Erreur chargement rapports Amazon:', err);
@@ -158,7 +175,7 @@ export default function AmazonDetailTab() {
         type: 'success',
         text: `CSV "${file.name}" importé : ${data.count} transactions analysées pour ${data.periodKey} ! Coût FBA moyen réel : ${formatCurrency(data.reconciliation?.csvSummary?.avgFbaPerUnit)}/unité.`
       });
-      setReconciliation(data.reconciliation);
+      await loadReports();
       setSelectedPeriod(data.periodKey);
     } catch (err) {
       setFeedback({ type: 'error', text: err.message });
@@ -214,31 +231,87 @@ export default function AmazonDetailTab() {
     ? sortedChrono
     : sortedChrono.filter(r => r.period_key === selectedPeriod);
 
+  // Calcul consolidé incluant le Vrai ROI (Revenus HT - Frais Amazon - Ads - COGS)
+  const computeMetrics = (r) => {
+    const revenuesHt = r.revenues_total || 0;
+    const taxes = r.taxes_total || 0;
+    const totalTtc = revenuesHt + taxes;
+    const amazonExpenses = Math.abs(r.expenses_total || 0);
+    const adSpend = Math.abs(r.ad_spend || 0);
+    const fbaFees = Math.abs(r.csv_fba_fees || r.fba_transaction_fees || 0);
+    const storageFees = Math.abs(r.storage_fees || 0);
+    const otherAmazonFees = Math.max(0, amazonExpenses - adSpend - fbaFees - storageFees);
+    const units = r.csv_units > 0 ? r.csv_units : Math.round(revenuesHt / 33.33);
+    const orders = r.csv_orders > 0 ? r.csv_orders : units;
+    const cogsTotal = units * (parseFloat(unitCogs) || 0);
+
+    const totalAllCosts = amazonExpenses + cogsTotal;
+    const netProfit = revenuesHt - totalAllCosts;
+    const netMarginPct = revenuesHt > 0 ? (netProfit / revenuesHt) * 100 : 0;
+    const trueRoiPct = totalAllCosts > 0 ? (netProfit / totalAllCosts) * 100 : 0;
+    const avgFbaPerUnit = units > 0 ? fbaFees / units : 0;
+    const avgFbaPerOrder = orders > 0 ? fbaFees / orders : 0;
+
+    return {
+      revenuesHt,
+      taxes,
+      totalTtc,
+      amazonExpenses,
+      adSpend,
+      fbaFees,
+      storageFees,
+      otherAmazonFees,
+      units,
+      orders,
+      cogsTotal,
+      totalAllCosts,
+      netProfit,
+      netMarginPct,
+      trueRoiPct,
+      avgFbaPerUnit,
+      avgFbaPerOrder,
+      transfers: r.transfers_total || 0
+    };
+  };
+
   const summary = activeReports.reduce((acc, r) => {
-    acc.revenues += r.revenues_total || 0;
-    acc.taxes += r.taxes_total || 0;
-    acc.expenses += Math.abs(r.expenses_total || 0);
-    acc.adSpend += Math.abs(r.ad_spend || 0);
-    acc.fbaFees += Math.abs(r.fba_transaction_fees || 0) + Math.abs(r.selling_fees || 0) + Math.abs(r.storage_fees || 0) + Math.abs(r.service_fees || 0) + Math.abs(r.other_fees || 0);
-    acc.transfers += r.transfers_total || 0;
+    const m = computeMetrics(r);
+    acc.revenues += m.revenuesHt;
+    acc.taxes += m.taxes;
+    acc.expenses += m.amazonExpenses;
+    acc.adSpend += m.adSpend;
+    acc.fbaFees += m.fbaFees;
+    acc.storageFees += m.storageFees;
+    acc.otherAmazonFees += m.otherAmazonFees;
+    acc.units += m.units;
+    acc.orders += m.orders;
+    acc.cogsTotal += m.cogsTotal;
+    acc.netProfit += m.netProfit;
+    acc.transfers += m.transfers;
     return acc;
-  }, { revenues: 0, taxes: 0, expenses: 0, adSpend: 0, fbaFees: 0, transfers: 0 });
+  }, {
+    revenues: 0, taxes: 0, expenses: 0, adSpend: 0, fbaFees: 0, storageFees: 0,
+    otherAmazonFees: 0, units: 0, orders: 0, cogsTotal: 0, netProfit: 0, transfers: 0
+  });
 
   const totalTtc = summary.revenues + summary.taxes;
-  const retentionRate = totalTtc > 0 ? (summary.transfers / totalTtc) * 100 : 0;
+  const totalAllCosts = summary.expenses + summary.cogsTotal;
+  const trueRoiPct = totalAllCosts > 0 ? (summary.netProfit / totalAllCosts) * 100 : 0;
+  const netMarginPct = summary.revenues > 0 ? (summary.netProfit / summary.revenues) * 100 : 0;
+  const avgFbaPerUnitGlobal = summary.units > 0 ? summary.fbaFees / summary.units : 0;
+  const avgFbaPerOrderGlobal = summary.orders > 0 ? summary.fbaFees / summary.orders : 0;
   const realCostRate = totalTtc > 0 ? (summary.expenses / totalTtc) * 100 : 0;
   const realAcos = summary.revenues > 0 ? (summary.adSpend / summary.revenues) * 100 : 0;
   const realRoas = summary.adSpend > 0 ? (summary.revenues / summary.adSpend) : 0;
 
   const chartData = sortedChrono.map(r => {
-    const ads = Math.abs(r.ad_spend || 0);
-    const totalExp = Math.abs(r.expenses_total || 0);
-    const amazonFeesOnly = Math.max(0, totalExp - ads);
+    const m = computeMetrics(r);
     return {
       name: r.period_label,
-      'Virement Bancaire Net': Math.round((r.transfers_total || 0) * 100) / 100,
-      'Frais Amazon & FBA': Math.round(amazonFeesOnly * 100) / 100,
-      'Amazon Ads': Math.round(ads * 100) / 100
+      'Bénéfice Net Réel (après COGS)': Math.round(m.netProfit * 100) / 100,
+      'Frais Amazon & FBA': Math.round((m.amazonExpenses - m.adSpend) * 100) / 100,
+      'Amazon Ads': Math.round(m.adSpend * 100) / 100,
+      'COGS Fabrication': Math.round(m.cogsTotal * 100) / 100
     };
   });
 
@@ -252,10 +325,10 @@ export default function AmazonDetailTab() {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">
-              Détail Amazon Seller Central — Coûts Réels, PDF & Rapprochement CSV
+              Détail Amazon Seller Central — Coûts Réels, Expédition FBA & Vrai ROI
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Importez vos relevés mensuels PDF (Résumés) et CSV (Transactions) pour calculer le coût exact FBA et rapprocher vos commandes
+              Comparatif des coûts d'expédition FBA vs Shopify et calcul du ROI net complet (Pub, Commissions, FBA, Stockage, COGS)
             </p>
           </div>
         </div>
@@ -313,12 +386,12 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* KPI CARDS */}
+      {/* KPI CARDS : REVENUS, COÛTS, PUB & VRAI ROI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-slate-500">Revenus Net HT</p>
+              <p className="text-[11px] font-extrabold uppercase text-slate-500">Revenus Net HT Amazon</p>
               <h4 className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(summary.revenues)}</h4>
             </div>
             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
@@ -326,22 +399,22 @@ export default function AmazonDetailTab() {
             </div>
           </div>
           <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            CA TTC (avec TVA) : <b className="text-slate-800">{formatCurrency(totalTtc)}</b>
+            <b>{summary.orders}</b> cmd ({summary.units} art.) • TTC : <b>{formatCurrency(totalTtc)}</b>
           </p>
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-slate-500">Coût Réel Total Amazon</p>
-              <h4 className="text-2xl font-black text-rose-600 mt-1">-{formatCurrency(summary.expenses)}</h4>
+              <p className="text-[11px] font-extrabold uppercase text-slate-500">Coûts Amazon + COGS</p>
+              <h4 className="text-2xl font-black text-rose-600 mt-1">-{formatCurrency(totalAllCosts)}</h4>
             </div>
             <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
               <Percent className="w-4 h-4" />
             </div>
           </div>
           <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            Ponction sur TTC : <b className="text-rose-700">{realCostRate.toFixed(1)}%</b> (FBA/Com : {formatCurrency(summary.fbaFees)})
+            Amazon : -{formatCurrency(summary.expenses)} ({realCostRate.toFixed(1)}%) • COGS : -{formatCurrency(summary.cogsTotal)}
           </p>
         </div>
 
@@ -360,19 +433,113 @@ export default function AmazonDetailTab() {
           </p>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+        <div className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 shadow-md">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-slate-500">Virement Bancaire Net</p>
-              <h4 className="text-2xl font-black text-emerald-600 mt-1">{formatCurrency(summary.transfers)}</h4>
+              <p className="text-[11px] font-extrabold uppercase text-emerald-400">Vrai Résultat Net & ROI</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <h4 className={`text-2xl font-black ${summary.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatCurrency(summary.netProfit)}
+                </h4>
+                <span className="text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                  ROI {trueRoiPct.toFixed(1)}%
+                </span>
+              </div>
             </div>
-            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-              <Landmark className="w-4 h-4" />
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+              <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            Cash conservé sur TTC : <b className="text-emerald-700">{retentionRate.toFixed(1)}%</b>
-          </p>
+          <div className="text-[11px] text-slate-300 font-semibold mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
+            <span>Marge nette HT : <b className="text-white">{netMarginPct.toFixed(1)}%</b></span>
+            <label className="flex items-center gap-1">
+              <span className="text-slate-400">COGS/u:</span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={unitCogs}
+                onChange={(e) => setUnitCogs(parseFloat(e.target.value) || 0)}
+                className="w-12 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-center text-white font-bold text-[11px]"
+              />
+              <span>€</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* COMPARATIF COÛTS EXPÉDITION : AMAZON FBA VS SHOPIFY DOMICILE VS MONDIAL RELAY */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-200">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-slate-900">
+                Comparatif Coût d'Expédition : Amazon FBA Réel vs Shopify (Domicile & Mondial Relay)
+              </h4>
+              <p className="text-xs text-slate-500">
+                Basé sur vos factures réelles « Frais Expédié par Amazon » des 4 relevés CSV mensuels
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-extrabold uppercase text-emerald-700">Shopify — Mondial Relay</div>
+              <div className="text-2xl font-black text-emerald-900 mt-1">{formatCurrency(shippingRates.relais)}</div>
+              <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Par commande</div>
+            </div>
+            <span className="text-xs font-black bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-200">
+              -{formatCurrency(Math.max(0, avgFbaPerUnitGlobal - shippingRates.relais))} vs FBA
+            </span>
+          </div>
+
+          <div className="bg-indigo-50/50 border border-indigo-200/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-extrabold uppercase text-indigo-700">Shopify — Domicile</div>
+              <div className="text-2xl font-black text-indigo-900 mt-1">{formatCurrency(shippingRates.domicile)}</div>
+              <div className="text-[11px] text-indigo-700 font-semibold mt-0.5">Colissimo / Chronopost</div>
+            </div>
+            <span className="text-xs font-black bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full border border-indigo-200">
+              -{formatCurrency(Math.max(0, avgFbaPerUnitGlobal - shippingRates.domicile))} vs FBA
+            </span>
+          </div>
+
+          <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-extrabold uppercase text-amber-800">Amazon FBA Réel</div>
+              <div className="text-2xl font-black text-amber-950 mt-1">{formatCurrency(avgFbaPerUnitGlobal)}</div>
+              <div className="text-[11px] text-amber-800 font-semibold mt-0.5">
+                / produit ({formatCurrency(avgFbaPerOrderGlobal)} / cmd)
+              </div>
+            </div>
+            <span className="text-[11px] font-black bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300">
+              Total : {formatCurrency(summary.fbaFees)}
+            </span>
+          </div>
+        </div>
+
+        {/* BARRE MENSUELLE DES COÛTS FBA */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+          {sortedChrono.map(r => {
+            const m = computeMetrics(r);
+            return (
+              <div key={r.period_key} className="bg-slate-50 border border-slate-200/70 rounded-xl p-3 text-xs">
+                <div className="font-extrabold text-slate-800">{r.period_label}</div>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-amber-700 font-black text-sm">{formatCurrency(m.avgFbaPerUnit)}/u</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{m.units} prod.</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  {formatCurrency(m.avgFbaPerOrder)} / cmd • Total {formatCurrency(m.fbaFees)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -405,7 +572,6 @@ export default function AmazonDetailTab() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* BLOC 1: FRAIS EXPÉDITION FBA RÉELS */}
             <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
               <div className="text-[11px] font-extrabold uppercase text-indigo-600">Coût Expédition FBA Réel</div>
               <div className="flex items-baseline gap-2">
@@ -430,7 +596,6 @@ export default function AmazonDetailTab() {
               </div>
             </div>
 
-            {/* BLOC 2: RAPPROCHEMENT COMMANDES */}
             <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
               <div className="text-[11px] font-extrabold uppercase text-emerald-600">Rapprochement Commandes</div>
               <div className="flex items-baseline gap-2">
@@ -457,7 +622,6 @@ export default function AmazonDetailTab() {
               </div>
             </div>
 
-            {/* BLOC 3: COMMISSIONS & PUB CSV */}
             <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
               <div className="text-[11px] font-extrabold uppercase text-amber-600">Commissions, Pub & Payout CSV</div>
               <div className="flex items-baseline gap-2">
@@ -544,12 +708,12 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* GRAPHIQUE COMPARATIF MENSUEL */}
+      {/* GRAPHIQUE COMPARATIF MENSUEL (BÉNÉFICE NET RÉEL VS COÛTS) */}
       {chartData.length > 0 && (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
           <div className="mb-4">
-            <h4 className="text-sm font-extrabold text-slate-900">Évolution Mensuelle : Revenus vs Coûts Réels & Virement Net</h4>
-            <p className="text-xs text-slate-500">Visualisation de la répartition du cash Amazon mois par mois</p>
+            <h4 className="text-sm font-extrabold text-slate-900">Évolution Mensuelle : Bénéfice Net Réel vs Coûts Totaux (FBA, Ads, COGS)</h4>
+            <p className="text-xs text-slate-500">Décomposition du Revenu Net HT mois par mois (COGS fixé à {formatCurrency(unitCogs)}/u)</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -559,8 +723,9 @@ export default function AmazonDetailTab() {
                 <YAxis stroke="#64748b" fontSize={11} fontWeight={600} tickLine={false} tickFormatter={(v) => `${v} €`} />
                 <Tooltip formatter={(val) => formatCurrency(val)} />
                 <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
-                <Bar dataKey="Virement Bancaire Net" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="Frais Amazon & FBA" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="Bénéfice Net Réel (après COGS)" stackId="a" fill="#10b981" />
+                <Bar dataKey="COGS Fabrication" stackId="a" fill="#6366f1" />
+                <Bar dataKey="Frais Amazon & FBA" stackId="a" fill="#f43f5e" />
                 <Bar dataKey="Amazon Ads" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -568,14 +733,14 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* TABLEAU HISTORIQUE DÉTAILLÉ DES RAPPORTS PDF */}
+      {/* TABLEAU HISTORIQUE DÉTAILLÉ DES RAPPORTS PDF + CALCUL VRAI ROI */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <FileText className="w-5 h-5 text-amber-600" />
             <div>
-              <h4 className="text-sm font-extrabold text-slate-900">Historique Comparatif des Rapports PDF Seller Central</h4>
-              <p className="text-xs text-slate-500">Décomposition exacte ligne par ligne de chaque relevé mensuel</p>
+              <h4 className="text-sm font-extrabold text-slate-900">Historique Comparatif Mensuel & Calcul du Vrai ROI Amazon</h4>
+              <p className="text-xs text-slate-500">Synthèse exacte de Juillet à Octobre 2026 (PDF Seller Central + CSV FBA + COGS)</p>
             </div>
           </div>
         </div>
@@ -586,7 +751,7 @@ export default function AmazonDetailTab() {
           <div className="p-8 text-center text-xs text-slate-500">Aucun rapport importé pour le moment.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[650px]">
+            <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 text-xs font-extrabold border-b border-slate-200">
                   <th className="px-6 py-3.5 w-72 min-w-[260px]">Poste du Rapport Amazon</th>
@@ -663,8 +828,15 @@ export default function AmazonDetailTab() {
                 {expanded.expenses && (
                   <>
                     <tr className="text-[11px] text-slate-700">
-                      <td className="px-10 py-2">Frais de transaction FBA (Logistique / Livraison)</td>
+                      <td className="px-10 py-2">Frais d'expédition FBA (Transaction)</td>
                       {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center font-semibold text-rose-600">{formatCurrency(r.fba_transaction_fees)}</td>)}
+                    </tr>
+                    <tr className="text-[11px] text-slate-700">
+                      <td className="px-10 py-2">Coût FBA moyen par produit vendu</td>
+                      {sortedChrono.map(r => {
+                        const m = computeMetrics(r);
+                        return <td key={r.period_key} className="px-4 py-2 text-center font-bold text-amber-700">{formatCurrency(m.avgFbaPerUnit)} / prod</td>;
+                      })}
                     </tr>
                     <tr className="text-[11px] text-slate-700">
                       <td className="px-10 py-2">Frais de vente / Commission Marketplace</td>
@@ -679,12 +851,8 @@ export default function AmazonDetailTab() {
                       {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center text-rose-600">{formatCurrency(r.storage_fees)}</td>)}
                     </tr>
                     <tr className="text-[11px] text-slate-700">
-                      <td className="px-10 py-2">Frais sur les services (Abonnement Pro, etc.)</td>
-                      {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center text-slate-600">{formatCurrency(r.service_fees)}</td>)}
-                    </tr>
-                    <tr className="text-[11px] text-slate-700">
-                      <td className="px-10 py-2">Autres frais de transaction & administratifs</td>
-                      {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center text-slate-600">{formatCurrency(r.other_fees)}</td>)}
+                      <td className="px-10 py-2">Frais sur les services & administratifs</td>
+                      {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center text-slate-600">{formatCurrency((r.service_fees || 0) + (r.other_fees || 0))}</td>)}
                     </tr>
                   </>
                 )}
@@ -716,41 +884,49 @@ export default function AmazonDetailTab() {
                   </>
                 )}
 
-                <tr className="bg-emerald-900 text-white font-black border-t-2 border-emerald-700">
-                  <td className="px-6 py-3.5 text-xs uppercase tracking-wider">
-                    🏦 VIREMENT NET SUR COMPTE BANCAIRE
+                {/* SECTION CALCUL VRAI ROI */}
+                <tr className="bg-slate-900 text-white font-black border-t-2 border-slate-700">
+                  <td className="px-6 py-3 text-xs uppercase">
+                    Coût de revient Produits (COGS à {formatCurrency(unitCogs)}/u)
                   </td>
                   {sortedChrono.map(r => {
-                    const ttc = (r.revenues_total || 0) + (r.taxes_total || 0);
-                    const pct = ttc > 0 ? ((r.transfers_total || 0) / ttc) * 100 : 0;
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-3 text-center text-indigo-300">
+                        -{formatCurrency(m.cogsTotal)} <span className="text-[10px] text-slate-400">({m.units} u)</span>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                <tr className="bg-emerald-950 text-white font-black border-t border-emerald-800">
+                  <td className="px-6 py-3.5 text-xs uppercase tracking-wider">
+                    💎 BÉNÉFICE NET RÉEL & VRAI ROI AMAZON
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
                     return (
                       <td key={r.period_key} className="px-4 py-3.5 text-center">
-                        <div className="text-sm font-black text-emerald-300">{formatCurrency(r.transfers_total)}</div>
-                        <div className="text-[10px] font-bold text-emerald-400/90 mt-0.5">
-                          {pct.toFixed(1)}% du CA TTC
+                        <div className={`text-sm font-black ${m.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                          {formatCurrency(m.netProfit)}
+                        </div>
+                        <div className="text-[10px] font-bold text-emerald-400 mt-0.5">
+                          ROI {m.trueRoiPct.toFixed(1)}% • Marge {m.netMarginPct.toFixed(1)}%
                         </div>
                       </td>
                     );
                   })}
                 </tr>
 
-                <tr className="bg-slate-900 text-slate-200 font-bold border-t border-slate-800">
+                <tr className="bg-slate-800 text-slate-200 font-bold border-t border-slate-700">
                   <td className="px-6 py-3 text-[11px] uppercase">
-                    Part Coûts Amazon (Frais + Ads) / CA TTC
+                    🏦 Virement Bancaire Amazon (Dépôt)
                   </td>
-                  {sortedChrono.map(r => {
-                    const ttc = (r.revenues_total || 0) + (r.taxes_total || 0);
-                    const exp = Math.abs(r.expenses_total || 0);
-                    const pct = ttc > 0 ? (exp / ttc) * 100 : 0;
-                    const tacos = r.revenues_total > 0 ? (Math.abs(r.ad_spend || 0) / r.revenues_total) * 100 : 0;
-                    return (
-                      <td key={r.period_key} className="px-4 py-3 text-center text-[11px]">
-                        <span className="text-rose-300 font-extrabold">{pct.toFixed(1)}%</span>
-                        <span className="text-slate-500 mx-1.5">|</span>
-                        <span className="text-amber-300 font-bold">TACOS {tacos.toFixed(1)}%</span>
-                      </td>
-                    );
-                  })}
+                  {sortedChrono.map(r => (
+                    <td key={r.period_key} className="px-4 py-3 text-center text-xs text-slate-300 font-extrabold">
+                      {formatCurrency(r.transfers_total)}
+                    </td>
+                  ))}
                 </tr>
               </tbody>
             </table>
