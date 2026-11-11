@@ -129,7 +129,7 @@ export async function getAmazonSales(startDate, endDate) {
       const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
       const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
       const referralFee = revenue * 0.15; // Commission Marketplace 15%
-      const fbaShippingCost = order.FulfillmentChannel === 'AFN' ? (4.25 * qty) : 0.0; // Frais d'expédition Amazon FBA
+      const fbaShippingCost = order.FulfillmentChannel === 'AFN' ? (7.29 * qty) : 0.0; // Frais réels moyens d'expédition Amazon FBA (7,29€/u d'après relevé CSV)
       const discounts = parseFloat(order.PromotionDiscountAmount?.Amount || 0);
       const returns = isCanceled ? revenue : 0;
 

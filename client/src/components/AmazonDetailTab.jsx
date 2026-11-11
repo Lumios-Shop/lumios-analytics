@@ -3,7 +3,6 @@ import {
   ShoppingBag,
   Upload,
   FileText,
-  TrendingUp,
   DollarSign,
   Percent,
   Trash2,
@@ -12,7 +11,9 @@ import {
   ChevronRight,
   Landmark,
   Megaphone,
-  Package
+  FileSpreadsheet,
+  RefreshCw,
+  ArrowRightLeft
 } from 'lucide-react';
 import {
   BarChart,
@@ -31,9 +32,13 @@ const API_BASE = getApiBase();
 export default function AmazonDetailTab() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [applyingCosts, setApplyingCosts] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('all'); // 'all' ou period_key
+  const [reconciliation, setReconciliation] = useState(null);
+  const [showCsvOrders, setShowCsvOrders] = useState(false);
   const [expanded, setExpanded] = useState({
     revenues: true,
     expenses: true,
@@ -47,6 +52,11 @@ export default function AmazonDetailTab() {
       if (res.ok) {
         const data = await res.json();
         setReports(data);
+        // Charger le rapprochement pour le mois sélectionné (ou le dernier mois dispo)
+        const targetPeriod = selectedPeriod !== 'all' ? selectedPeriod : (data[0]?.period_key || '2026-10');
+        if (targetPeriod) {
+          loadReconciliation(targetPeriod);
+        }
       }
     } catch (err) {
       console.error('Erreur chargement rapports Amazon:', err);
@@ -55,11 +65,31 @@ export default function AmazonDetailTab() {
     }
   };
 
+  const loadReconciliation = async (periodKey) => {
+    try {
+      const res = await authFetch(`${API_BASE}/amazon/reconciliation/${periodKey}`);
+      if (res.ok) {
+        const data = await res.json();
+        setReconciliation(data);
+      }
+    } catch (err) {
+      console.error('Erreur chargement rapprochement:', err);
+    }
+  };
+
   useEffect(() => {
     loadReports();
   }, []);
 
-  const handleFileUpload = async (e) => {
+  useEffect(() => {
+    if (selectedPeriod !== 'all') {
+      loadReconciliation(selectedPeriod);
+    } else if (reports.length > 0) {
+      loadReconciliation(reports[0].period_key);
+    }
+  }, [selectedPeriod]);
+
+  const handlePdfUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -68,7 +98,7 @@ export default function AmazonDetailTab() {
       return;
     }
 
-    setUploading(true);
+    setUploadingPdf(true);
     setFeedback(null);
 
     try {
@@ -92,15 +122,72 @@ export default function AmazonDetailTab() {
 
       setFeedback({
         type: 'success',
-        text: `Rapport "${data.report.period_label}" importé et analysé avec succès !`
+        text: `Rapport PDF "${data.report.period_label}" importé et analysé avec succès !`
       });
       await loadReports();
       setSelectedPeriod(data.report.period_key);
     } catch (err) {
       setFeedback({ type: 'error', text: err.message });
     } finally {
-      setUploading(false);
+      setUploadingPdf(false);
       e.target.value = '';
+    }
+  };
+
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCsv(true);
+    setFeedback(null);
+
+    try {
+      const csvText = await file.text();
+      const res = await authFetch(`${API_BASE}/amazon/transactions/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Échec de l’import du CSV.');
+      }
+
+      setFeedback({
+        type: 'success',
+        text: `CSV "${file.name}" importé : ${data.count} transactions analysées pour ${data.periodKey} ! Coût FBA moyen réel : ${formatCurrency(data.reconciliation?.csvSummary?.avgFbaPerUnit)}/unité.`
+      });
+      setReconciliation(data.reconciliation);
+      setSelectedPeriod(data.periodKey);
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message });
+    } finally {
+      setUploadingCsv(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleApplyCsvCosts = async (periodKey) => {
+    setApplyingCosts(true);
+    setFeedback(null);
+    try {
+      const res = await authFetch(`${API_BASE}/amazon/reconciliation/${periodKey}/apply`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Impossible d’appliquer les coûts CSV.');
+      }
+      setFeedback({
+        type: 'success',
+        text: `Coûts réels CSV appliqués au Dashboard (${data.updatedDays} jours de frais FBA/com + ${data.updatedAdsDays} jours d'Amazon Ads mis à jour) !`
+      });
+      await loadReconciliation(periodKey);
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message });
+    } finally {
+      setApplyingCosts(false);
     }
   };
 
@@ -121,10 +208,8 @@ export default function AmazonDetailTab() {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 }).format(val || 0);
   };
 
-  // Trier chronologiquement (ancien -> récent) pour graphique et colonnes
   const sortedChrono = [...reports].sort((a, b) => a.period_key.localeCompare(b.period_key));
 
-  // Données filtrées pour les KPI cards (soit cumul historique, soit mois sélectionné)
   const activeReports = selectedPeriod === 'all'
     ? sortedChrono
     : sortedChrono.filter(r => r.period_key === selectedPeriod);
@@ -145,7 +230,6 @@ export default function AmazonDetailTab() {
   const realAcos = summary.revenues > 0 ? (summary.adSpend / summary.revenues) * 100 : 0;
   const realRoas = summary.adSpend > 0 ? (summary.revenues / summary.adSpend) : 0;
 
-  // Données pour graphique
   const chartData = sortedChrono.map(r => {
     const ads = Math.abs(r.ad_spend || 0);
     const totalExp = Math.abs(r.expenses_total || 0);
@@ -154,31 +238,29 @@ export default function AmazonDetailTab() {
       name: r.period_label,
       'Virement Bancaire Net': Math.round((r.transfers_total || 0) * 100) / 100,
       'Frais Amazon & FBA': Math.round(amazonFeesOnly * 100) / 100,
-      'Amazon Ads': Math.round(ads * 100) / 100,
-      'CA Net HT': Math.round((r.revenues_total || 0) * 100) / 100
+      'Amazon Ads': Math.round(ads * 100) / 100
     };
   });
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* HEADER + UPLOAD PDF */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* HEADER + UPLOAD PDF & CSV */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-200/70">
             <ShoppingBag className="w-6 h-6" />
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">
-              Détail Amazon Seller Central — Coûts Réels & Historique PDF
+              Détail Amazon Seller Central — Coûts Réels, PDF & Rapprochement CSV
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Importez chaque mois votre rapport PDF « Résumés » Seller Central pour suivre vos frais réels FBA, Ads et virements bancaires
+              Importez vos relevés mensuels PDF (Résumés) et CSV (Transactions) pour calculer le coût exact FBA et rapprocher vos commandes
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* SÉLECTEUR DE MOIS */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
@@ -190,17 +272,30 @@ export default function AmazonDetailTab() {
             ))}
           </select>
 
-          {/* BOUTON IMPORT PDF */}
           <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold text-white transition-all shadow-xs cursor-pointer ${
-            uploading ? 'bg-slate-400 cursor-wait' : 'bg-amber-600 hover:bg-amber-500'
+            uploadingPdf ? 'bg-slate-400 cursor-wait' : 'bg-amber-600 hover:bg-amber-500'
           }`}>
             <Upload className="w-4 h-4" />
-            {uploading ? 'Analyse en cours...' : 'Importer un rapport PDF'}
+            {uploadingPdf ? 'Import PDF...' : 'Importer PDF Résumé'}
             <input
               type="file"
               accept="application/pdf,.pdf"
-              onChange={handleFileUpload}
-              disabled={uploading}
+              onChange={handlePdfUpload}
+              disabled={uploadingPdf}
+              className="hidden"
+            />
+          </label>
+
+          <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold text-white transition-all shadow-xs cursor-pointer ${
+            uploadingCsv ? 'bg-slate-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-500'
+          }`}>
+            <FileSpreadsheet className="w-4 h-4" />
+            {uploadingCsv ? 'Import CSV...' : 'Importer CSV Transactions'}
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvUpload}
+              disabled={uploadingCsv}
               className="hidden"
             />
           </label>
@@ -246,7 +341,7 @@ export default function AmazonDetailTab() {
             </div>
           </div>
           <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            Ponction sur TTC : <b className="text-rose-700">{realCostRate.toFixed(1)}%</b> (dont FBA/Com : {formatCurrency(summary.fbaFees)})
+            Ponction sur TTC : <b className="text-rose-700">{realCostRate.toFixed(1)}%</b> (FBA/Com : {formatCurrency(summary.fbaFees)})
           </p>
         </div>
 
@@ -280,6 +375,174 @@ export default function AmazonDetailTab() {
           </p>
         </div>
       </div>
+
+      {/* SECTION RAPPROCHEMENT CSV TRANSACTIONS VS DASHBOARD SP-API */}
+      {reconciliation && reconciliation.hasCsv && (
+        <div className="bg-gradient-to-br from-indigo-50/50 via-white to-slate-50 border border-indigo-200/80 rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <ArrowRightLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-slate-900">
+                  Rapprochement CSV Transactions vs Dashboard ({reconciliation.periodKey})
+                </h4>
+                <p className="text-xs text-slate-500 font-medium">
+                  Coût d'expédition réel « Frais Expédié par Amazon » et rapprochement commande par commande avec SP-API
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleApplyCsvCosts(reconciliation.periodKey)}
+              disabled={applyingCosts}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${applyingCosts ? 'animate-spin' : ''}`} />
+              {applyingCosts ? 'Application...' : 'Appliquer les coûts réels CSV au Dashboard'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* BLOC 1: FRAIS EXPÉDITION FBA RÉELS */}
+            <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
+              <div className="text-[11px] font-extrabold uppercase text-indigo-600">Coût Expédition FBA Réel</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900">
+                  {formatCurrency(reconciliation.csvSummary.avgFbaPerUnit)}
+                </span>
+                <span className="text-xs font-bold text-slate-500">/ produit</span>
+              </div>
+              <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+                <div className="flex justify-between">
+                  <span>Coût moyen / commande :</span>
+                  <b className="text-slate-900">{formatCurrency(reconciliation.csvSummary.avgFbaPerOrder)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total FBA CSV ({reconciliation.csvSummary.units} art.) :</span>
+                  <b className="text-rose-600">-{formatCurrency(reconciliation.csvSummary.fbaFees)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total FBA dans Dashboard :</span>
+                  <b className="text-slate-700">-{formatCurrency(reconciliation.dashboardSummary.estFba)}</b>
+                </div>
+              </div>
+            </div>
+
+            {/* BLOC 2: RAPPROCHEMENT COMMANDES */}
+            <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
+              <div className="text-[11px] font-extrabold uppercase text-emerald-600">Rapprochement Commandes</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-emerald-700">
+                  {reconciliation.reconciliation.matchedCount}
+                </span>
+                <span className="text-xs font-bold text-slate-500">
+                  / {reconciliation.csvSummary.orders} cmd matchées
+                </span>
+              </div>
+              <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+                <div className="flex justify-between">
+                  <span>Encaissées CSV (date expéd.) :</span>
+                  <b className="text-slate-900">{reconciliation.csvSummary.orders} cmd ({reconciliation.csvSummary.units} art.)</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Passées SP-API (date achat) :</span>
+                  <b className="text-slate-900">{reconciliation.dashboardSummary.orders} cmd ({reconciliation.dashboardSummary.units} art.)</b>
+                </div>
+                <div className="flex justify-between text-[11px] text-amber-700">
+                  <span>Écart (annulées / mois suiv.) :</span>
+                  <b>{reconciliation.reconciliation.spOnlyCount} cmd SP-API non encaissées</b>
+                </div>
+              </div>
+            </div>
+
+            {/* BLOC 3: COMMISSIONS & PUB CSV */}
+            <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-2">
+              <div className="text-[11px] font-extrabold uppercase text-amber-600">Commissions, Pub & Payout CSV</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900">
+                  {formatCurrency(reconciliation.csvSummary.netPayout)}
+                </span>
+                <span className="text-xs font-bold text-slate-500">net commandes</span>
+              </div>
+              <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
+                <div className="flex justify-between">
+                  <span>Frais de vente réels CSV :</span>
+                  <b className="text-rose-600">-{formatCurrency(reconciliation.csvSummary.sellingFees)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Factures Amazon Ads CSV :</span>
+                  <b className="text-amber-700">-{formatCurrency(reconciliation.csvSummary.adsTtc)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Remboursements ({reconciliation.csvSummary.refundsCount}) :</span>
+                  <b className="text-rose-600">{formatCurrency(reconciliation.csvSummary.refundsTotal)}</b>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TABLEAU DÉPLIANT DES COMMANDES CSV */}
+          <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+            <button
+              onClick={() => setShowCsvOrders(!showCsvOrders)}
+              className="w-full px-5 py-3 bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-xs font-extrabold text-slate-800 cursor-pointer transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <ChevronRight className={`w-4 h-4 text-indigo-600 transition-transform ${showCsvOrders ? 'rotate-90' : ''}`} />
+                Voir le détail par commande du relevé CSV ({reconciliation.orders.length} commandes)
+              </span>
+              <span className="text-[11px] font-bold text-indigo-600">
+                {showCsvOrders ? 'Masquer ▲' : 'Déplier ▾'}
+              </span>
+            </button>
+
+            {showCsvOrders && (
+              <div className="max-h-96 overflow-y-auto overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-100 sticky top-0 text-[11px] font-extrabold text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2.5">Date Tx</th>
+                      <th className="px-4 py-2.5">N° Commande</th>
+                      <th className="px-4 py-2.5 text-center">Rapprochement</th>
+                      <th className="px-4 py-2.5 text-center">Qté</th>
+                      <th className="px-4 py-2.5 text-right">Vente TTC</th>
+                      <th className="px-4 py-2.5 text-right">Frais Vente</th>
+                      <th className="px-4 py-2.5 text-right text-rose-700">Frais FBA</th>
+                      <th className="px-4 py-2.5 text-right text-emerald-700">Net Versé</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {reconciliation.orders.map((o, idx) => (
+                      <tr key={`${o.orderId}_${idx}`} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-2 text-slate-600">{o.txDate}</td>
+                        <td className="px-4 py-2 font-mono font-bold text-slate-800">{o.orderId}</td>
+                        <td className="px-4 py-2 text-center">
+                          {o.matched ? (
+                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              Match SP-API ({o.spDate})
+                            </span>
+                          ) : (
+                            <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              Hors plage SP-API
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center font-bold">{o.quantity}</td>
+                        <td className="px-4 py-2 text-right font-semibold">{formatCurrency(o.revTtc)}</td>
+                        <td className="px-4 py-2 text-right text-slate-500">-{formatCurrency(o.sellingFee)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-rose-600">-{formatCurrency(o.fbaFee)}</td>
+                        <td className="px-4 py-2 text-right font-black text-emerald-700">{formatCurrency(o.netPayout)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* GRAPHIQUE COMPARATIF MENSUEL */}
       {chartData.length > 0 && (
@@ -344,7 +607,6 @@ export default function AmazonDetailTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-medium">
-                {/* SECTION REVENUS */}
                 <tr
                   onClick={() => setExpanded(p => ({ ...p, revenues: !p.revenues }))}
                   className="bg-indigo-50/50 hover:bg-indigo-100/60 cursor-pointer font-extrabold text-indigo-950"
@@ -384,7 +646,6 @@ export default function AmazonDetailTab() {
                   </>
                 )}
 
-                {/* SECTION DÉPENSES */}
                 <tr
                   onClick={() => setExpanded(p => ({ ...p, expenses: !p.expenses }))}
                   className="bg-rose-50/70 hover:bg-rose-100/70 cursor-pointer font-extrabold text-rose-950 border-t border-rose-200/60"
@@ -428,7 +689,6 @@ export default function AmazonDetailTab() {
                   </>
                 )}
 
-                {/* SECTION TAXES */}
                 <tr
                   onClick={() => setExpanded(p => ({ ...p, taxes: !p.taxes }))}
                   className="bg-slate-50 hover:bg-slate-100 cursor-pointer font-bold text-slate-800 border-t border-slate-200/70"
@@ -456,7 +716,6 @@ export default function AmazonDetailTab() {
                   </>
                 )}
 
-                {/* SECTION TRANSFERT BANCAIRE NET */}
                 <tr className="bg-emerald-900 text-white font-black border-t-2 border-emerald-700">
                   <td className="px-6 py-3.5 text-xs uppercase tracking-wider">
                     🏦 VIREMENT NET SUR COMPTE BANCAIRE
@@ -475,7 +734,6 @@ export default function AmazonDetailTab() {
                   })}
                 </tr>
 
-                {/* TACOS & POIDS COÛTS AMAZON */}
                 <tr className="bg-slate-900 text-slate-200 font-bold border-t border-slate-800">
                   <td className="px-6 py-3 text-[11px] uppercase">
                     Part Coûts Amazon (Frais + Ads) / CA TTC

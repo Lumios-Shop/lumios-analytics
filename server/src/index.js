@@ -9,7 +9,10 @@ import {
   parseAmazonSummaryPdf,
   getAllAmazonMonthlyReports,
   saveAmazonMonthlyReport,
-  deleteAmazonMonthlyReport
+  deleteAmazonMonthlyReport,
+  importAmazonTransactionsCsv,
+  getAmazonReconciliation,
+  applyAmazonCsvCostsToDashboard
 } from './services/amazonReportService.js';
 
 dotenv.config();
@@ -613,6 +616,45 @@ app.delete('/api/amazon/reports/:periodKey', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Erreur lors de la suppression du rapport Amazon :', error);
     res.status(500).json({ error: 'Impossible de supprimer ce rapport.' });
+  }
+});
+
+/**
+ * Endpoints : Import CSV Transactions Amazon & Rapprochement Dashboard
+ */
+app.post('/api/amazon/transactions/upload', requireAuth, async (req, res) => {
+  const { csvText } = req.body;
+  if (!csvText) {
+    return res.status(400).json({ error: 'Contenu CSV manquant.' });
+  }
+
+  try {
+    const result = await importAmazonTransactionsCsv(csvText);
+    const reconciliation = await getAmazonReconciliation(result.periodKey);
+    res.json({ success: true, ...result, reconciliation });
+  } catch (error) {
+    console.error('Erreur lors de l\'import CSV Amazon :', error);
+    res.status(400).json({ error: error.message || 'Impossible de parser ce fichier CSV Amazon.' });
+  }
+});
+
+app.get('/api/amazon/reconciliation/:periodKey', requireAuth, async (req, res) => {
+  try {
+    const reconciliation = await getAmazonReconciliation(req.params.periodKey);
+    res.json(reconciliation);
+  } catch (error) {
+    console.error('Erreur lors du rapprochement Amazon :', error);
+    res.status(500).json({ error: 'Impossible de calculer le rapprochement.' });
+  }
+});
+
+app.post('/api/amazon/reconciliation/:periodKey/apply', requireAuth, async (req, res) => {
+  try {
+    const stats = await applyAmazonCsvCostsToDashboard(req.params.periodKey);
+    res.json({ success: true, ...stats });
+  } catch (error) {
+    console.error('Erreur lors de l\'application des coûts réels CSV :', error);
+    res.status(400).json({ error: error.message || 'Impossible d\'appliquer les coûts CSV.' });
   }
 });
 

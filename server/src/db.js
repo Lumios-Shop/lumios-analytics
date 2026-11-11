@@ -229,6 +229,33 @@ export async function initDb() {
     )
   `);
 
+  // Table pour les transactions individuelles issues du CSV mensuel Amazon Seller Central
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS amazon_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      period_key TEXT,
+      tx_date TEXT,
+      tx_datetime TEXT,
+      tx_type TEXT,
+      order_id TEXT,
+      sku TEXT,
+      description TEXT,
+      quantity INTEGER DEFAULT 0,
+      product_sales_ht REAL DEFAULT 0.0,
+      product_taxes REAL DEFAULT 0.0,
+      shipping_credits REAL DEFAULT 0.0,
+      promo_rebates REAL DEFAULT 0.0,
+      selling_fees REAL DEFAULT 0.0,
+      fba_fees REAL DEFAULT 0.0,
+      other_fees REAL DEFAULT 0.0,
+      other_amount REAL DEFAULT 0.0,
+      total_payout REAL DEFAULT 0.0,
+      status TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_amz_tx_period ON amazon_transactions(period_key);
+    CREATE INDEX IF NOT EXISTS idx_amz_tx_order ON amazon_transactions(order_id);
+  `);
+
   return db;
 }
 
