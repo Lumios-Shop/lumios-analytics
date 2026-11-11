@@ -77,9 +77,25 @@ export async function initDb() {
       date TEXT,
       source TEXT,
       spend REAL DEFAULT 0.0,
+      orders REAL DEFAULT 0.0,
+      units_sold REAL DEFAULT 0.0,
+      conversion_value REAL DEFAULT 0.0,
       PRIMARY KEY (date, source)
     );
   `);
+
+  // Migration pour ajouter les colonnes d'attribution (commandes, unités vendues, valeur) dans ad_spends
+  try {
+    const adSpendsInfo = await db.all("PRAGMA table_info(ad_spends)");
+    const adCols = adSpendsInfo.map(c => c.name);
+    if (adSpendsInfo.length > 0) {
+      if (!adCols.includes('orders')) await db.exec(`ALTER TABLE ad_spends ADD COLUMN orders REAL DEFAULT 0.0`);
+      if (!adCols.includes('units_sold')) await db.exec(`ALTER TABLE ad_spends ADD COLUMN units_sold REAL DEFAULT 0.0`);
+      if (!adCols.includes('conversion_value')) await db.exec(`ALTER TABLE ad_spends ADD COLUMN conversion_value REAL DEFAULT 0.0`);
+    }
+  } catch (err) {
+    console.error("Erreur lors de l'ajout des colonnes d'attribution dans ad_spends :", err);
+  }
 
   // Migration pour ajouter les colonnes d'analyse approfondie dans daily_sku_sales
   try {

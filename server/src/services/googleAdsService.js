@@ -119,9 +119,14 @@ export async function getGoogleAdsSpend(startDate, endDate) {
       throw new Error("Impossible d'obtenir le jeton d'accès OAuth Google.");
     }
 
-    const query = `
-      SELECT segments.date, metrics.cost_micros 
-      FROM customer 
+    const queryWithCart = `
+      SELECT segments.date, metrics.cost_micros, metrics.conversions, metrics.conversions_value, metrics.orders, metrics.units_sold
+      FROM customer
+      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+    `;
+    const queryFallback = `
+      SELECT segments.date, metrics.cost_micros, metrics.conversions, metrics.conversions_value
+      FROM customer
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `;
 
@@ -139,25 +144,31 @@ export async function getGoogleAdsSpend(startDate, endDate) {
       return h;
     };
 
-    let searchRes;
-    const apiVersion = 'v26';
-
-    try {
-      searchRes = await axios.post(
-        `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
-        { query },
-        { headers: makeHeaders(true) }
-      );
-    } catch (firstErr) {
-      if (loginCustomerId) {
-        searchRes = await axios.post(
+    const runQuery = async (gaql) => {
+      const apiVersion = 'v26';
+      try {
+        return await axios.post(
           `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
-          { query },
-          { headers: makeHeaders(false) }
+          { query: gaql },
+          { headers: makeHeaders(true) }
         );
-      } else {
+      } catch (firstErr) {
+        if (loginCustomerId) {
+          return await axios.post(
+            `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
+            { query: gaql },
+            { headers: makeHeaders(false) }
+          );
+        }
         throw firstErr;
       }
+    };
+
+    let searchRes;
+    try {
+      searchRes = await runQuery(queryWithCart);
+    } catch {
+      searchRes = await runQuery(queryFallback);
     }
 
     const results = [];
@@ -167,8 +178,18 @@ export async function getGoogleAdsSpend(startDate, endDate) {
         const date = row.segments?.date;
         const costMicros = parseFloat(row.metrics?.costMicros || 0);
         const spend = costMicros / 1000000;
+        const orders = parseFloat(row.metrics?.orders ?? row.metrics?.conversions ?? 0);
+        const unitsSold = parseFloat(row.metrics?.unitsSold ?? row.metrics?.orders ?? row.metrics?.conversions ?? 0);
+        const conversionValue = parseFloat(row.metrics?.conversionsValue || 0);
         if (date) {
-          results.push({ date, source: 'google', spend });
+          results.push({
+            date,
+            source: 'google',
+            spend: Math.round(spend * 100) / 100,
+            orders: Math.round(orders * 100) / 100,
+            unitsSold: Math.round(unitsSold * 100) / 100,
+            conversionValue: Math.round(conversionValue * 100) / 100
+          });
         }
       });
     });

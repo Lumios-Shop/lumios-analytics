@@ -408,6 +408,54 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                 );
               })}
             </tr>
+            <tr className="bg-slate-800/80 text-slate-300 border-t border-slate-700/60">
+              <td className="px-6 py-2.5 text-[11px] font-bold pl-10 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
+                <span>Meta Pixel — CPA / Cmd & CPA / Prod</span>
+              </td>
+              {sortedData.map((col) => {
+                const cpaCmd = col.facebookCpaOrder || (col.facebookOrders > 0 ? col.facebookAds / col.facebookOrders : 0);
+                const cpaProd = col.facebookCpaUnit || (col.facebookUnits > 0 ? col.facebookAds / col.facebookUnits : 0);
+                return (
+                  <td key={col.date} className="px-4 py-2.5 text-center text-[11px]">
+                    {col.facebookOrders > 0 ? (
+                      <div className="flex flex-col items-center">
+                        <span className="text-blue-300 font-bold">{formatCurrency(cpaCmd)} / cmd</span>
+                        <span className={`font-black ${cpaProd <= 9 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                          {formatCurrency(cpaProd)} / prod
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="bg-slate-800/80 text-slate-300 border-t border-slate-700/60">
+              <td className="px-6 py-2.5 text-[11px] font-bold pl-10 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-rose-400 inline-block"></span>
+                <span>Google Ads — CPA / Cmd & CPA / Prod</span>
+              </td>
+              {sortedData.map((col) => {
+                const cpaCmd = col.googleCpaOrder || (col.googleOrders > 0 ? col.googleAds / col.googleOrders : 0);
+                const cpaProd = col.googleCpaUnit || (col.googleUnits > 0 ? col.googleAds / col.googleUnits : 0);
+                return (
+                  <td key={col.date} className="px-4 py-2.5 text-center text-[11px]">
+                    {col.googleOrders > 0 ? (
+                      <div className="flex flex-col items-center">
+                        <span className="text-rose-300 font-bold">{formatCurrency(cpaCmd)} / cmd</span>
+                        <span className={`font-black ${cpaProd <= 9 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                          {formatCurrency(cpaProd)} / prod
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
           </tbody>
         </table>
       </div>

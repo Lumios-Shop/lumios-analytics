@@ -40,7 +40,7 @@ export async function getShopifySales(startDate, endDate) {
       created_at_min: minDate,
       created_at_max: maxDate,
       status: 'any',
-      fields: 'id,name,created_at,line_items,total_price,total_discounts,current_total_discounts,discount_codes,discount_applications,refunds,cancelled_at,financial_status,payment_gateway_names,shipping_lines',
+      fields: 'id,name,created_at,line_items,total_price,total_discounts,current_total_discounts,discount_codes,discount_applications,refunds,cancelled_at,financial_status,payment_gateway_names,shipping_lines,referring_site,landing_site',
       limit: 250
     };
 

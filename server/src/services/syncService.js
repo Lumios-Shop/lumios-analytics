@@ -48,7 +48,52 @@ async function performSync(startDate, endDate) {
     ]);
 
     if (metaAdsData && metaAdsData.length > 0) {
-      await saveBatchAdSpends(metaAdsData);
+      // Calculer les quantités estimées pour Meta via le ratio réel articles/commande Shopify des commandes Meta (ou global)
+      const shopifyStatsByDate = {};
+      let globalShopifyOrders = 0;
+      let globalShopifyUnits = 0;
+      (shopifyData || []).forEach(s => {
+        if (!shopifyStatsByDate[s.date]) shopifyStatsByDate[s.date] = { orders: 0, units: 0 };
+        shopifyStatsByDate[s.date].orders += (s.orderCount || 0);
+        shopifyStatsByDate[s.date].units += (s.salesCount || 0);
+        globalShopifyOrders += (s.orderCount || 0);
+        globalShopifyUnits += (s.salesCount || 0);
+      });
+
+      const metaShopifyByDate = {};
+      let globalMetaShopifyOrders = 0;
+      let globalMetaShopifyUnits = 0;
+      if (shopifyData && shopifyData.rawOrders) {
+        shopifyData.rawOrders.forEach(o => {
+          const ref = (o.referring_site || '').toLowerCase();
+          const land = (o.landing_site || '').toLowerCase();
+          if (ref.includes('facebook') || ref.includes('instagram') || land.includes('fbclid') || land.includes('utm_source=facebook') || land.includes('utm_source=meta') || land.includes('utm_source=ig')) {
+            const d = new Date(o.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+            const qty = (o.line_items || []).reduce((sum, li) => sum + (li.quantity || 1), 0);
+            if (!metaShopifyByDate[d]) metaShopifyByDate[d] = { orders: 0, units: 0 };
+            metaShopifyByDate[d].orders += 1;
+            metaShopifyByDate[d].units += qty;
+            globalMetaShopifyOrders += 1;
+            globalMetaShopifyUnits += qty;
+          }
+        });
+      }
+
+      const defaultMetaRatio = globalMetaShopifyOrders > 0
+        ? (globalMetaShopifyUnits / globalMetaShopifyOrders)
+        : (globalShopifyOrders > 0 ? (globalShopifyUnits / globalShopifyOrders) : 1.15);
+
+      const enrichedMetaData = metaAdsData.map(item => {
+        const dayMeta = metaShopifyByDate[item.date];
+        const dayAll = shopifyStatsByDate[item.date];
+        const ratio = (dayMeta && dayMeta.orders >= 2)
+          ? (dayMeta.units / dayMeta.orders)
+          : ((dayAll && dayAll.orders > 0) ? (dayAll.units / dayAll.orders) : defaultMetaRatio);
+        const orders = item.orders || 0;
+        const unitsSold = orders > 0 ? Math.max(orders, Math.round(orders * ratio * 100) / 100) : 0;
+        return { ...item, unitsSold };
+      });
+      await saveBatchAdSpends(enrichedMetaData);
     }
 
     if (amazonAdsData && amazonAdsData.length > 0) {
@@ -322,18 +367,38 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
 
   const rows = await db.all(salesQuery, [startDate, endDate]);
   const adSpendRows = await db.all(
-    `SELECT date, source, spend FROM ad_spends WHERE date BETWEEN ? AND ?`,
+    `SELECT date, source, spend, COALESCE(orders, 0.0) as orders, COALESCE(units_sold, 0.0) as units_sold, COALESCE(conversion_value, 0.0) as conversion_value FROM ad_spends WHERE date BETWEEN ? AND ?`,
     [startDate, endDate]
   );
 
   const adSpendsByDate = {};
   adSpendRows.forEach(row => {
     if (!adSpendsByDate[row.date]) {
-      adSpendsByDate[row.date] = { facebook: 0, google: 0, amazon: 0 };
+      adSpendsByDate[row.date] = {
+        facebook: 0, facebookOrders: 0, facebookUnits: 0, facebookConvValue: 0,
+        google: 0, googleOrders: 0, googleUnits: 0, googleConvValue: 0,
+        amazon: 0, amazonOrders: 0, amazonUnits: 0, amazonConvValue: 0
+      };
     }
-    if (row.source === 'facebook') adSpendsByDate[row.date].facebook += row.spend;
-    if (row.source === 'google') adSpendsByDate[row.date].google += row.spend;
-    if (row.source === 'amazon') adSpendsByDate[row.date].amazon += row.spend;
+    const target = adSpendsByDate[row.date];
+    if (row.source === 'facebook') {
+      target.facebook += row.spend || 0;
+      target.facebookOrders += row.orders || 0;
+      target.facebookUnits += row.units_sold || 0;
+      target.facebookConvValue += row.conversion_value || 0;
+    }
+    if (row.source === 'google') {
+      target.google += row.spend || 0;
+      target.googleOrders += row.orders || 0;
+      target.googleUnits += row.units_sold || 0;
+      target.googleConvValue += row.conversion_value || 0;
+    }
+    if (row.source === 'amazon') {
+      target.amazon += row.spend || 0;
+      target.amazonOrders += row.orders || 0;
+      target.amazonUnits += row.units_sold || 0;
+      target.amazonConvValue += row.conversion_value || 0;
+    }
   });
 
   const dailyResults = [];
@@ -360,10 +425,26 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const amazonDiscounts = row.amazon_discounts || 0.0;
     const amazonReturns = row.amazon_returns || 0.0;
 
-    const ads = adSpendsByDate[dateStr] || { facebook: 0, google: 0, amazon: 0 };
+    const ads = adSpendsByDate[dateStr] || {
+      facebook: 0, facebookOrders: 0, facebookUnits: 0, facebookConvValue: 0,
+      google: 0, googleOrders: 0, googleUnits: 0, googleConvValue: 0,
+      amazon: 0, amazonOrders: 0, amazonUnits: 0, amazonConvValue: 0
+    };
     const facebookAds = ads.facebook || 0.0;
+    const facebookOrders = ads.facebookOrders || 0.0;
+    const facebookUnits = ads.facebookUnits || 0.0;
+    const facebookConvValue = ads.facebookConvValue || 0.0;
+
     const googleAds = ads.google || 0.0;
+    const googleOrders = ads.googleOrders || 0.0;
+    const googleUnits = ads.googleUnits || 0.0;
+    const googleConvValue = ads.googleConvValue || 0.0;
+
     const amazonAds = ads.amazon || 0.0;
+    const amazonAdOrders = ads.amazonOrders || 0.0;
+    const amazonAdUnits = ads.amazonUnits || 0.0;
+    const amazonAdConvValue = ads.amazonConvValue || 0.0;
+
     const totalAdsSpend = facebookAds + googleAds + amazonAds;
 
     const grossRevenue = shopifyRevenue + shopifyDiscounts + shopifyReturns + amazonRevenue + amazonDiscounts + amazonReturns;
@@ -378,6 +459,11 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const roas = totalAdsSpend > 0 ? parseFloat((netRevenue / totalAdsSpend).toFixed(2)) : 0;
     // CPA calculé sur la quantité réelle de produits vendus (target business : ≤ 9€ / produit vendu)
     const cpa = totalSalesCount > 0 && totalAdsSpend > 0 ? parseFloat((totalAdsSpend / totalSalesCount).toFixed(2)) : 0;
+
+    const facebookCpaOrder = facebookOrders > 0 && facebookAds > 0 ? parseFloat((facebookAds / facebookOrders).toFixed(2)) : 0;
+    const facebookCpaUnit = facebookUnits > 0 && facebookAds > 0 ? parseFloat((facebookAds / facebookUnits).toFixed(2)) : 0;
+    const googleCpaOrder = googleOrders > 0 && googleAds > 0 ? parseFloat((googleAds / googleOrders).toFixed(2)) : 0;
+    const googleCpaUnit = googleUnits > 0 && googleAds > 0 ? parseFloat((googleAds / googleUnits).toFixed(2)) : 0;
 
     dailyResults.push({
       date: dateStr,
@@ -406,8 +492,21 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       domicileRevenue: parseFloat((row.domicile_revenue || 0).toFixed(2)),
       relaisRevenue: parseFloat((row.relais_revenue || 0).toFixed(2)),
       facebookAds: parseFloat(facebookAds.toFixed(2)),
+      facebookOrders: parseFloat(facebookOrders.toFixed(2)),
+      facebookUnits: parseFloat(facebookUnits.toFixed(2)),
+      facebookConvValue: parseFloat(facebookConvValue.toFixed(2)),
+      facebookCpaOrder,
+      facebookCpaUnit,
       googleAds: parseFloat(googleAds.toFixed(2)),
+      googleOrders: parseFloat(googleOrders.toFixed(2)),
+      googleUnits: parseFloat(googleUnits.toFixed(2)),
+      googleConvValue: parseFloat(googleConvValue.toFixed(2)),
+      googleCpaOrder,
+      googleCpaUnit,
       amazonAds: parseFloat(amazonAds.toFixed(2)),
+      amazonAdOrders: parseFloat(amazonAdOrders.toFixed(2)),
+      amazonAdUnits: parseFloat(amazonAdUnits.toFixed(2)),
+      amazonAdConvValue: parseFloat(amazonAdConvValue.toFixed(2)),
       totalAdsSpend: parseFloat(totalAdsSpend.toFixed(2)),
       roas,
       cpa,
@@ -458,8 +557,17 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
         domicileRevenue: 0,
         relaisRevenue: 0,
         facebookAds: 0,
+        facebookOrders: 0,
+        facebookUnits: 0,
+        facebookConvValue: 0,
         googleAds: 0,
+        googleOrders: 0,
+        googleUnits: 0,
+        googleConvValue: 0,
         amazonAds: 0,
+        amazonAdOrders: 0,
+        amazonAdUnits: 0,
+        amazonAdConvValue: 0,
         totalAdsSpend: 0,
         grossRevenue: 0,
         totalOrdersCount: 0,
@@ -498,8 +606,17 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     g.domicileRevenue += item.domicileRevenue;
     g.relaisRevenue += item.relaisRevenue;
     g.facebookAds += item.facebookAds;
+    g.facebookOrders += item.facebookOrders;
+    g.facebookUnits += item.facebookUnits;
+    g.facebookConvValue += item.facebookConvValue;
     g.googleAds += item.googleAds;
+    g.googleOrders += item.googleOrders;
+    g.googleUnits += item.googleUnits;
+    g.googleConvValue += item.googleConvValue;
     g.amazonAds += item.amazonAds;
+    g.amazonAdOrders += item.amazonAdOrders;
+    g.amazonAdUnits += item.amazonAdUnits;
+    g.amazonAdConvValue += item.amazonAdConvValue;
     g.totalAdsSpend += item.totalAdsSpend;
     g.grossRevenue += item.grossRevenue;
     g.totalOrdersCount += item.totalOrdersCount;
@@ -515,6 +632,11 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const roas = g.totalAdsSpend > 0 ? parseFloat((g.totalRevenue / g.totalAdsSpend).toFixed(2)) : 0;
     // CPA agrégé sur la quantité de produits vendus
     const cpa = g.totalSalesCount > 0 && g.totalAdsSpend > 0 ? parseFloat((g.totalAdsSpend / g.totalSalesCount).toFixed(2)) : 0;
+
+    const facebookCpaOrder = g.facebookOrders > 0 && g.facebookAds > 0 ? parseFloat((g.facebookAds / g.facebookOrders).toFixed(2)) : 0;
+    const facebookCpaUnit = g.facebookUnits > 0 && g.facebookAds > 0 ? parseFloat((g.facebookAds / g.facebookUnits).toFixed(2)) : 0;
+    const googleCpaOrder = g.googleOrders > 0 && g.googleAds > 0 ? parseFloat((g.googleAds / g.googleOrders).toFixed(2)) : 0;
+    const googleCpaUnit = g.googleUnits > 0 && g.googleAds > 0 ? parseFloat((g.googleAds / g.googleUnits).toFixed(2)) : 0;
     
     return {
       ...g,
@@ -533,8 +655,21 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       domicileRevenue: parseFloat(g.domicileRevenue.toFixed(2)),
       relaisRevenue: parseFloat(g.relaisRevenue.toFixed(2)),
       facebookAds: parseFloat(g.facebookAds.toFixed(2)),
+      facebookOrders: parseFloat(g.facebookOrders.toFixed(2)),
+      facebookUnits: parseFloat(g.facebookUnits.toFixed(2)),
+      facebookConvValue: parseFloat(g.facebookConvValue.toFixed(2)),
+      facebookCpaOrder,
+      facebookCpaUnit,
       googleAds: parseFloat(g.googleAds.toFixed(2)),
+      googleOrders: parseFloat(g.googleOrders.toFixed(2)),
+      googleUnits: parseFloat(g.googleUnits.toFixed(2)),
+      googleConvValue: parseFloat(g.googleConvValue.toFixed(2)),
+      googleCpaOrder,
+      googleCpaUnit,
       amazonAds: parseFloat(g.amazonAds.toFixed(2)),
+      amazonAdOrders: parseFloat(g.amazonAdOrders.toFixed(2)),
+      amazonAdUnits: parseFloat(g.amazonAdUnits.toFixed(2)),
+      amazonAdConvValue: parseFloat(g.amazonAdConvValue.toFixed(2)),
       totalAdsSpend: parseFloat(g.totalAdsSpend.toFixed(2)),
       grossRevenue: parseFloat(g.grossRevenue.toFixed(2)),
       totalRevenue: parseFloat(g.totalRevenue.toFixed(2)),

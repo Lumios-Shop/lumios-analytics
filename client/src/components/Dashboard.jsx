@@ -16,6 +16,7 @@ import { authFetch, getApiBase } from '../utils/api';
 const API_BASE = getApiBase();
 
 import UnitEconomicsCard from './UnitEconomicsCard';
+import ChannelAttributionCard from './ChannelAttributionCard';
 
 export default function Dashboard({ refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'payments', 'shipping', 'margin'
@@ -232,6 +233,9 @@ export default function Dashboard({ refreshTrigger }) {
               <div className="grid grid-cols-1 gap-6">
                 <SalesChart data={salesData} granularity={filter.granularity} />
               </div>
+
+              {/* ATTRIBUTION DÉCLARATIVE RÉGIES (META PIXEL & GOOGLE ADS) */}
+              <ChannelAttributionCard salesData={salesData} />
 
               {/* TABLEAU DE PERFORMANCE FINANCIÈRE P&L (STRICTEMENT MENSUEL) */}
               <PerformancePnlTable data={monthlySalesData} granularity="monthly" />
