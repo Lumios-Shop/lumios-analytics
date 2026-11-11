@@ -5,6 +5,12 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { initDb, getDb } from './db.js';
 import { syncAndGetSalesData } from './services/syncService.js';
+import {
+  parseAmazonSummaryPdf,
+  getAllAmazonMonthlyReports,
+  saveAmazonMonthlyReport,
+  deleteAmazonMonthlyReport
+} from './services/amazonReportService.js';
 
 dotenv.config();
 
@@ -58,7 +64,7 @@ function requireAuth(req, res, next) {
 }
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // Initialiser la base de données
 try {
@@ -566,6 +572,47 @@ app.get('/api/auth/google/callback', async (req, res) => {
   } catch (error) {
     console.error("Erreur lors de l'échange OAuth Google Ads :", error.response?.data || error.message);
     res.status(500).send(`Erreur lors de la génération du token Google Ads : ${error.response?.data?.error_description || error.message}`);
+  }
+});
+
+/**
+ * Endpoints : Historique et import PDF des rapports mensuels Amazon Seller Central
+ */
+app.get('/api/amazon/reports', requireAuth, async (req, res) => {
+  try {
+    const reports = await getAllAmazonMonthlyReports();
+    res.json(reports);
+  } catch (error) {
+    console.error('Erreur lors de la récupération des rapports Amazon :', error);
+    res.status(500).json({ error: 'Impossible de charger les rapports Amazon.' });
+  }
+});
+
+app.post('/api/amazon/reports/upload', requireAuth, async (req, res) => {
+  const { pdfBase64 } = req.body;
+  if (!pdfBase64) {
+    return res.status(400).json({ error: 'Fichier PDF manquant.' });
+  }
+
+  try {
+    const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    const parsed = await parseAmazonSummaryPdf(buffer);
+    const saved = await saveAmazonMonthlyReport(parsed);
+    res.json({ success: true, report: saved });
+  } catch (error) {
+    console.error('Erreur lors du parsing PDF Amazon :', error);
+    res.status(400).json({ error: error.message || 'Impossible de lire ce rapport PDF Amazon.' });
+  }
+});
+
+app.delete('/api/amazon/reports/:periodKey', requireAuth, async (req, res) => {
+  try {
+    await deleteAmazonMonthlyReport(req.params.periodKey);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur lors de la suppression du rapport Amazon :', error);
+    res.status(500).json({ error: 'Impossible de supprimer ce rapport.' });
   }
 });
 

@@ -172,6 +172,63 @@ export async function initDb() {
     `INSERT OR IGNORE INTO shipping_method_costs (code, name, cost_per_order) VALUES ('relais', 'Livraison en Point Relais (Mondial Relay / Relais Colis)', 3.50)`
   );
 
+  // Table pour l'historique des rapports mensuels PDF Amazon Seller Central
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS amazon_monthly_reports (
+      period_key TEXT PRIMARY KEY,
+      period_label TEXT,
+      date_range TEXT,
+      revenues_total REAL DEFAULT 0.0,
+      product_sales REAL DEFAULT 0.0,
+      product_refunds REAL DEFAULT 0.0,
+      fba_inventory_credit REAL DEFAULT 0.0,
+      shipping_credits REAL DEFAULT 0.0,
+      promo_rebates REAL DEFAULT 0.0,
+      expenses_total REAL DEFAULT 0.0,
+      selling_fees REAL DEFAULT 0.0,
+      fba_transaction_fees REAL DEFAULT 0.0,
+      storage_fees REAL DEFAULT 0.0,
+      ad_spend REAL DEFAULT 0.0,
+      service_fees REAL DEFAULT 0.0,
+      other_fees REAL DEFAULT 0.0,
+      taxes_total REAL DEFAULT 0.0,
+      taxes_collected REAL DEFAULT 0.0,
+      taxes_refunded REAL DEFAULT 0.0,
+      transfers_total REAL DEFAULT 0.0,
+      raw_json TEXT DEFAULT NULL,
+      uploaded_at TEXT
+    );
+  `);
+
+  // Pré-remplir avec les 2 rapports fournis (Septembre 2026 & Octobre 2026) s'ils n'existent pas encore
+  await db.run(`
+    INSERT OR IGNORE INTO amazon_monthly_reports (
+      period_key, period_label, date_range,
+      revenues_total, product_sales, product_refunds, fba_inventory_credit, shipping_credits, promo_rebates,
+      expenses_total, selling_fees, fba_transaction_fees, storage_fees, ad_spend, service_fees, other_fees,
+      taxes_total, taxes_collected, taxes_refunded, transfers_total, uploaded_at
+    ) VALUES (
+      '2026-09', 'Septembre 2026', 'Sep 1, 2026 - Sep 30, 2026',
+      14542.78, 15231.85, -433.29, 78.45, 241.83, -576.06,
+      -5570.00, -1249.04, -3317.80, -75.66, -737.59, -46.80, -143.11,
+      2873.66, 2964.57, -90.91, 12092.50, '2026-11-11T21:45:00Z'
+    )
+  `);
+
+  await db.run(`
+    INSERT OR IGNORE INTO amazon_monthly_reports (
+      period_key, period_label, date_range,
+      revenues_total, product_sales, product_refunds, fba_inventory_credit, shipping_credits, promo_rebates,
+      expenses_total, selling_fees, fba_transaction_fees, storage_fees, ad_spend, service_fees, other_fees,
+      taxes_total, taxes_collected, taxes_refunded, transfers_total, uploaded_at
+    ) VALUES (
+      '2026-10', 'Octobre 2026', 'Oct 1, 2026 - Oct 31, 2026',
+      9291.15, 9365.36, -199.98, 97.40, 108.57, -80.20,
+      -4723.63, -14.40, -2049.21, -204.38, -2345.37, -46.80, -63.47,
+      1833.79, 1876.51, -42.72, 7261.44, '2026-11-11T21:45:00Z'
+    )
+  `);
+
   return db;
 }
 

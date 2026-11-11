@@ -9,7 +9,8 @@ import PerformancePnlTable from './PerformancePnlTable';
 import PaymentsAnalyticsTab from './PaymentsAnalyticsTab';
 import ShippingAnalyticsTab from './ShippingAnalyticsTab';
 import OrdersDetailSection from './OrdersDetailSection';
-import { BarChart3, Truck, Target, Layers } from 'lucide-react';
+import AmazonDetailTab from './AmazonDetailTab';
+import { BarChart3, Truck, Target, Layers, ShoppingBag } from 'lucide-react';
 import { authFetch, getApiBase } from '../utils/api';
 
 const API_BASE = getApiBase();
@@ -180,6 +181,18 @@ export default function Dashboard({ refreshTrigger }) {
         </button>
 
         <button
+          onClick={() => setActiveTab('amazon')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            activeTab === 'amazon'
+              ? 'bg-white text-amber-600 shadow-sm border border-amber-200/80'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4" />
+          Détail Amazon (Rapports PDF)
+        </button>
+
+        <button
           onClick={() => setActiveTab('orders')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
             activeTab === 'orders'
@@ -244,6 +257,11 @@ export default function Dashboard({ refreshTrigger }) {
               <ChannelAttributionCard salesData={salesData} />
               <UnitEconomicsCard salesData={salesData} />
             </div>
+          )}
+
+          {/* ONGLET 3: DÉTAIL AMAZON & RAPPORTS MENSUELS PDF */}
+          {activeTab === 'amazon' && (
+            <AmazonDetailTab />
           )}
 
           {/* ONGLET 3: DÉTAIL DES COMMANDES ET PRODUITS VENDUS */}

@@ -14,6 +14,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "lumios-analytics-root": "file:..",
+    "pdf-parse": "^1.1.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   },
