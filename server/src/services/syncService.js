@@ -61,22 +61,42 @@ async function performSync(startDate, endDate) {
       });
 
       const metaShopifyByDate = {};
+      const trackingByDate = {};
       let globalMetaShopifyOrders = 0;
       let globalMetaShopifyUnits = 0;
       if (shopifyData && shopifyData.rawOrders) {
         shopifyData.rawOrders.forEach(o => {
           const ref = (o.referring_site || '').toLowerCase();
           const land = (o.landing_site || '').toLowerCase();
-          if (ref.includes('facebook') || ref.includes('instagram') || land.includes('fbclid') || land.includes('utm_source=facebook') || land.includes('utm_source=meta') || land.includes('utm_source=ig')) {
-            const d = new Date(o.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
-            const qty = (o.line_items || []).reduce((sum, li) => sum + (li.quantity || 1), 0);
+          const d = new Date(o.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+          const qty = (o.line_items || []).reduce((sum, li) => sum + (li.quantity || 1), 0);
+          if (!trackingByDate[d]) trackingByDate[d] = { metaOrders: 0, metaUnits: 0, googleOrders: 0, googleUnits: 0 };
+
+          const isMeta = ref.includes('facebook') || ref.includes('instagram') || ref.includes('fb.com') || ref.includes('l.instagram.com') || land.includes('fbclid') || land.includes('utm_source=facebook') || land.includes('utm_source=meta') || land.includes('utm_source=ig') || land.includes('utm_source=fb');
+          const isGoogle = ref.includes('google') || land.includes('gclid') || land.includes('gbraid') || land.includes('wbraid') || land.includes('utm_source=google') || land.includes('gad_source');
+
+          if (isMeta) {
             if (!metaShopifyByDate[d]) metaShopifyByDate[d] = { orders: 0, units: 0 };
             metaShopifyByDate[d].orders += 1;
             metaShopifyByDate[d].units += qty;
             globalMetaShopifyOrders += 1;
             globalMetaShopifyUnits += qty;
+            trackingByDate[d].metaOrders += 1;
+            trackingByDate[d].metaUnits += qty;
+          } else if (isGoogle) {
+            trackingByDate[d].googleOrders += 1;
+            trackingByDate[d].googleUnits += qty;
           }
         });
+
+        const trackingStmt = await db.prepare(`
+          INSERT OR REPLACE INTO shopify_channel_tracking (date, meta_orders, meta_units, google_orders, google_units)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        for (const [d, t] of Object.entries(trackingByDate)) {
+          await trackingStmt.run(d, t.metaOrders, t.metaUnits, t.googleOrders, t.googleUnits);
+        }
+        await trackingStmt.finalize();
       }
 
       const defaultMetaRatio = globalMetaShopifyOrders > 0
@@ -381,6 +401,12 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     `SELECT date, source, spend, COALESCE(orders, 0.0) as orders, COALESCE(units_sold, 0.0) as units_sold, COALESCE(conversion_value, 0.0) as conversion_value FROM ad_spends WHERE date BETWEEN ? AND ?`,
     [startDate, endDate]
   );
+  const trackingRows = await db.all(
+    `SELECT date, meta_orders, meta_units, google_orders, google_units FROM shopify_channel_tracking WHERE date BETWEEN ? AND ?`,
+    [startDate, endDate]
+  );
+  const trackingByDateMap = {};
+  trackingRows.forEach(tr => { trackingByDateMap[tr.date] = tr; });
 
   const adSpendsByDate = {};
   adSpendRows.forEach(row => {
@@ -476,10 +502,16 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const googleCpaOrder = googleOrders > 0 && googleAds > 0 ? parseFloat((googleAds / googleOrders).toFixed(2)) : 0;
     const googleCpaUnit = googleUnits > 0 && googleAds > 0 ? parseFloat((googleAds / googleUnits).toFixed(2)) : 0;
 
+    const shopifyTracking = trackingByDateMap[dateStr] || {};
+
     dailyResults.push({
       date: dateStr,
       shopifyOrdersCount,
       shopifySalesCount,
+      shopifyTrackedMetaOrders: shopifyTracking.meta_orders || 0,
+      shopifyTrackedMetaUnits: shopifyTracking.meta_units || 0,
+      shopifyTrackedGoogleOrders: shopifyTracking.google_orders || 0,
+      shopifyTrackedGoogleUnits: shopifyTracking.google_units || 0,
       shopifyRevenue: parseFloat(shopifyRevenue.toFixed(2)),
       shopifyFees: parseFloat(shopifyFees.toFixed(2)),
       shopifyShipping: parseFloat(shopifyShipping.toFixed(2)),
@@ -545,6 +577,10 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
         date: key,
         shopifyOrdersCount: 0,
         shopifySalesCount: 0,
+        shopifyTrackedMetaOrders: 0,
+        shopifyTrackedMetaUnits: 0,
+        shopifyTrackedGoogleOrders: 0,
+        shopifyTrackedGoogleUnits: 0,
         shopifyRevenue: 0,
         shopifyFees: 0,
         shopifyShipping: 0,
@@ -594,6 +630,10 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     const g = groupedMap[key];
     g.shopifyOrdersCount += item.shopifyOrdersCount;
     g.shopifySalesCount += item.shopifySalesCount;
+    g.shopifyTrackedMetaOrders += (item.shopifyTrackedMetaOrders || 0);
+    g.shopifyTrackedMetaUnits += (item.shopifyTrackedMetaUnits || 0);
+    g.shopifyTrackedGoogleOrders += (item.shopifyTrackedGoogleOrders || 0);
+    g.shopifyTrackedGoogleUnits += (item.shopifyTrackedGoogleUnits || 0);
     g.shopifyRevenue += item.shopifyRevenue;
     g.shopifyFees += item.shopifyFees;
     g.shopifyShipping += item.shopifyShipping;

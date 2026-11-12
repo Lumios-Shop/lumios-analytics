@@ -82,6 +82,14 @@ export async function initDb() {
       conversion_value REAL DEFAULT 0.0,
       PRIMARY KEY (date, source)
     );
+
+    CREATE TABLE IF NOT EXISTS shopify_channel_tracking (
+      date TEXT PRIMARY KEY,
+      meta_orders INTEGER DEFAULT 0,
+      meta_units INTEGER DEFAULT 0,
+      google_orders INTEGER DEFAULT 0,
+      google_units INTEGER DEFAULT 0
+    );
   `);
 
   // Migration pour ajouter les colonnes d'attribution (commandes, unités vendues, valeur) dans ad_spends
