@@ -45,13 +45,29 @@ export async function getShopifySales(startDate, endDate) {
     };
 
     while (nextUrl) {
-      const response = await axios.get(nextUrl, {
-        params: requestParams,
-        headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
-          'Content-Type': 'application/json'
+      let response;
+      let retries = 0;
+      while (retries < 5) {
+        try {
+          response = await axios.get(nextUrl, {
+            params: requestParams,
+            headers: {
+              'X-Shopify-Access-Token': ACCESS_TOKEN,
+              'Content-Type': 'application/json'
+            }
+          });
+          break;
+        } catch (apiErr) {
+          if (apiErr.response?.status === 429 && retries < 4) {
+            retries++;
+            const delay = retries * 1500;
+            console.log(`Shopify API rate limit 429, attente de ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            throw apiErr;
+          }
         }
-      });
+      }
 
       const orders = response.data.orders || [];
       allOrders = allOrders.concat(orders);
@@ -63,6 +79,7 @@ export async function getShopifySales(startDate, endDate) {
         if (match) {
           nextUrl = match[1];
           requestParams = undefined; // page_info est déjà inclus dans l'URL de la page suivante
+          await new Promise(r => setTimeout(r, 350)); // Éviter le rate limit 429 sur de longs historiques
         } else {
           nextUrl = null;
         }

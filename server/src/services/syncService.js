@@ -272,6 +272,15 @@ async function performSync(startDate, endDate) {
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync_today', ?)`,
       [Date.now().toString()]
     );
+
+    // Mémoriser la date de début la plus ancienne déjà synchronisée pour Shopify
+    const prevEarliest = await db.get(`SELECT value FROM settings WHERE key = 'earliest_shopify_sync'`);
+    if (!prevEarliest?.value || startDate < prevEarliest.value) {
+      await db.run(
+        `INSERT OR REPLACE INTO settings (key, value) VALUES ('earliest_shopify_sync', ?)`,
+        [startDate]
+      );
+    }
   } catch (err) {
     console.error("Erreur lors de la synchronisation avec les API :", err);
   }
@@ -300,8 +309,10 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
   let shouldSync = true;
   if (!forceRefresh) {
     const lastSyncSetting = await db.get(`SELECT value FROM settings WHERE key = 'last_sync_today'`);
+    const earliestSetting = await db.get(`SELECT value FROM settings WHERE key = 'earliest_shopify_sync'`);
     const lastSyncTime = lastSyncSetting?.value ? parseInt(lastSyncSetting.value) : 0;
     const isRecent = (Date.now() - lastSyncTime) < (5 * 60 * 1000); // 5 minutes TTL
+    const isRangeCovered = earliestSetting?.value && startDate >= earliestSetting.value;
     
     // Vérifier si la base a déjà des données récentes
     const hasEndData = await db.get(
@@ -309,7 +320,7 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       [endDate]
     );
 
-    if (isRecent && hasEndData?.count > 0) {
+    if (isRecent && isRangeCovered && hasEndData?.count > 0) {
       shouldSync = false;
     }
   }
