@@ -257,6 +257,16 @@ export async function initDb() {
     )
   `);
 
+  // Migration pour ajouter ad_attributed_sales (CA attribué Amazon Ads pour calcul ACOS)
+  try {
+    const amzRepCols = (await db.all("PRAGMA table_info(amazon_monthly_reports)")).map(c => c.name);
+    if (amzRepCols.length > 0 && !amzRepCols.includes('ad_attributed_sales')) {
+      await db.exec(`ALTER TABLE amazon_monthly_reports ADD COLUMN ad_attributed_sales REAL DEFAULT 0.0`);
+    }
+  } catch (err) {
+    console.error("Erreur migration amazon_monthly_reports:", err);
+  }
+
   // Table pour les transactions individuelles issues du CSV mensuel Amazon Seller Central
   await db.exec(`
     CREATE TABLE IF NOT EXISTS amazon_transactions (

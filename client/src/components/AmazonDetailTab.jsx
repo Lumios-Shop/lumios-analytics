@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronRight,
-  Landmark,
   Megaphone,
   FileSpreadsheet,
   RefreshCw,
@@ -32,8 +31,6 @@ const API_BASE = getApiBase();
 
 export default function AmazonDetailTab() {
   const [reports, setReports] = useState([]);
-  const [shippingRates, setShippingRates] = useState({ domicile: 5.50, relais: 3.50 });
-  const [unitCogs, setUnitCogs] = useState(8.0);
   const [loading, setLoading] = useState(true);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [uploadingCsv, setUploadingCsv] = useState(false);
@@ -45,34 +42,20 @@ export default function AmazonDetailTab() {
   const [expanded, setExpanded] = useState({
     revenues: true,
     expenses: true,
-    taxes: false,
-    roi: true
+    taxes: false
   });
 
   const loadReports = async () => {
     setLoading(true);
     try {
-      const [repRes, shipRes] = await Promise.all([
-        authFetch(`${API_BASE}/amazon/reports`),
-        authFetch(`${API_BASE}/config/shipping-costs`)
-      ]);
-
+      const repRes = await authFetch(`${API_BASE}/amazon/reports`);
       if (repRes.ok) {
         const data = await repRes.json();
         setReports(data);
-        if (data[0]?.default_unit_cogs) {
-          setUnitCogs(data[0].default_unit_cogs);
-        }
         const targetPeriod = selectedPeriod !== 'all' ? selectedPeriod : (data[0]?.period_key || '2026-10');
         if (targetPeriod) {
           loadReconciliation(targetPeriod);
         }
-      }
-      if (shipRes.ok) {
-        const shipData = await shipRes.json();
-        const dom = shipData.find(s => s.code === 'domicile')?.cost_per_order ?? 5.50;
-        const rel = shipData.find(s => s.code === 'relais')?.cost_per_order ?? 3.50;
-        setShippingRates({ domicile: dom, relais: rel });
       }
     } catch (err) {
       console.error('Erreur chargement rapports Amazon:', err);
@@ -172,7 +155,7 @@ export default function AmazonDetailTab() {
 
       setFeedback({
         type: 'success',
-        text: `CSV "${file.name}" importé : ${data.count} transactions analysées pour ${data.periodKey} ! Coût FBA moyen réel : ${formatCurrency(data.reconciliation?.csvSummary?.avgFbaPerUnit)}/unité.`
+        text: `CSV "${file.name}" importé : ${data.count} transactions analysées pour ${data.periodKey} !`
       });
       await loadReports();
       setSelectedPeriod(data.periodKey);
@@ -207,6 +190,21 @@ export default function AmazonDetailTab() {
     }
   };
 
+  const handleSaveAdSales = async (periodKey, val) => {
+    try {
+      const res = await authFetch(`${API_BASE}/amazon/reports/${periodKey}/ad-sales`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad_attributed_sales: parseFloat(val) || 0 })
+      });
+      if (res.ok) {
+        setReports(prev => prev.map(r => r.period_key === periodKey ? { ...r, ad_attributed_sales: parseFloat(val) || 0 } : r));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDelete = async (periodKey, label) => {
     if (!window.confirm(`Supprimer le rapport ${label} de l'historique ?`)) return;
     try {
@@ -230,7 +228,7 @@ export default function AmazonDetailTab() {
     ? sortedChrono
     : sortedChrono.filter(r => r.period_key === selectedPeriod);
 
-  // Calcul consolidé incluant le Vrai ROI (Revenus HT - Frais Amazon - Ads - COGS)
+  // Calcul du Bénéfice Net Amazon (hors COGS) : Revenus Net HT - Toutes Dépenses Amazon (Rabais déjà déduits, FBA, Com, Stockage, Ads, Services)
   const computeMetrics = (r) => {
     const revenuesHt = r.revenues_total || 0;
     const taxes = r.taxes_total || 0;
@@ -239,17 +237,17 @@ export default function AmazonDetailTab() {
     const adSpend = Math.abs(r.ad_spend || 0);
     const fbaFees = Math.abs(r.csv_fba_fees || r.fba_transaction_fees || 0);
     const storageFees = Math.abs(r.storage_fees || 0);
-    const otherAmazonFees = Math.max(0, amazonExpenses - adSpend - fbaFees - storageFees);
     const units = r.csv_units > 0 ? r.csv_units : Math.round(revenuesHt / 33.33);
     const orders = r.csv_orders > 0 ? r.csv_orders : units;
-    const cogsTotal = units * (parseFloat(unitCogs) || 0);
 
-    const totalAllCosts = amazonExpenses + cogsTotal;
-    const netProfit = revenuesHt - totalAllCosts;
-    const netMarginPct = revenuesHt > 0 ? (netProfit / revenuesHt) * 100 : 0;
-    const trueRoiPct = totalAllCosts > 0 ? (netProfit / totalAllCosts) * 100 : 0;
+    const netBenefit = revenuesHt - amazonExpenses;
+    const benefitPerUnit = units > 0 ? netBenefit / units : 0;
+    const netMarginPct = revenuesHt > 0 ? (netBenefit / revenuesHt) * 100 : 0;
     const avgFbaPerUnit = units > 0 ? fbaFees / units : 0;
-    const avgFbaPerOrder = orders > 0 ? fbaFees / orders : 0;
+
+    const tacosPct = revenuesHt > 0 ? (adSpend / revenuesHt) * 100 : 0;
+    const adAttributedSales = r.ad_attributed_sales || 0;
+    const acosPct = adAttributedSales > 0 ? (adSpend / adAttributedSales) * 100 : 0;
 
     return {
       revenuesHt,
@@ -259,16 +257,15 @@ export default function AmazonDetailTab() {
       adSpend,
       fbaFees,
       storageFees,
-      otherAmazonFees,
       units,
       orders,
-      cogsTotal,
-      totalAllCosts,
-      netProfit,
+      netBenefit,
+      benefitPerUnit,
       netMarginPct,
-      trueRoiPct,
       avgFbaPerUnit,
-      avgFbaPerOrder,
+      tacosPct,
+      adAttributedSales,
+      acosPct,
       transfers: r.transfers_total || 0
     };
   };
@@ -279,38 +276,33 @@ export default function AmazonDetailTab() {
     acc.taxes += m.taxes;
     acc.expenses += m.amazonExpenses;
     acc.adSpend += m.adSpend;
+    acc.adAttributedSales += m.adAttributedSales;
     acc.fbaFees += m.fbaFees;
-    acc.storageFees += m.storageFees;
-    acc.otherAmazonFees += m.otherAmazonFees;
     acc.units += m.units;
     acc.orders += m.orders;
-    acc.cogsTotal += m.cogsTotal;
-    acc.netProfit += m.netProfit;
+    acc.netBenefit += m.netBenefit;
     acc.transfers += m.transfers;
     return acc;
   }, {
-    revenues: 0, taxes: 0, expenses: 0, adSpend: 0, fbaFees: 0, storageFees: 0,
-    otherAmazonFees: 0, units: 0, orders: 0, cogsTotal: 0, netProfit: 0, transfers: 0
+    revenues: 0, taxes: 0, expenses: 0, adSpend: 0, adAttributedSales: 0,
+    fbaFees: 0, units: 0, orders: 0, netBenefit: 0, transfers: 0
   });
 
   const totalTtc = summary.revenues + summary.taxes;
-  const totalAllCosts = summary.expenses + summary.cogsTotal;
-  const trueRoiPct = totalAllCosts > 0 ? (summary.netProfit / totalAllCosts) * 100 : 0;
-  const netMarginPct = summary.revenues > 0 ? (summary.netProfit / summary.revenues) * 100 : 0;
-  const avgFbaPerUnitGlobal = summary.units > 0 ? summary.fbaFees / summary.units : 0;
-  const avgFbaPerOrderGlobal = summary.orders > 0 ? summary.fbaFees / summary.orders : 0;
-  const realCostRate = totalTtc > 0 ? (summary.expenses / totalTtc) * 100 : 0;
-  const realAcos = summary.revenues > 0 ? (summary.adSpend / summary.revenues) * 100 : 0;
+  const benefitPerUnitGlobal = summary.units > 0 ? summary.netBenefit / summary.units : 0;
+  const netMarginPct = summary.revenues > 0 ? (summary.netBenefit / summary.revenues) * 100 : 0;
+  const realCostRate = summary.revenues > 0 ? (summary.expenses / summary.revenues) * 100 : 0;
+  const tacosGlobal = summary.revenues > 0 ? (summary.adSpend / summary.revenues) * 100 : 0;
+  const acosGlobal = summary.adAttributedSales > 0 ? (summary.adSpend / summary.adAttributedSales) * 100 : 0;
   const realRoas = summary.adSpend > 0 ? (summary.revenues / summary.adSpend) : 0;
 
   const chartData = sortedChrono.map(r => {
     const m = computeMetrics(r);
     return {
       name: r.period_label,
-      'Bénéfice Net Réel (après COGS)': Math.round(m.netProfit * 100) / 100,
+      'Bénéfice Net Amazon': Math.round(m.netBenefit * 100) / 100,
       'Frais Amazon & FBA': Math.round((m.amazonExpenses - m.adSpend) * 100) / 100,
-      'Amazon Ads': Math.round(m.adSpend * 100) / 100,
-      'COGS Fabrication': Math.round(m.cogsTotal * 100) / 100
+      'Amazon Ads': Math.round(m.adSpend * 100) / 100
     };
   });
 
@@ -324,10 +316,10 @@ export default function AmazonDetailTab() {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-slate-900">
-              Détail Amazon Seller Central — Coûts Réels & Vrai ROI
+              Détail Amazon Seller Central — Bénéfice Net / Produit, ACOS & TACOS
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Calcul de la rentabilité nette réelle (Revenus, Remises, Remboursements, Commissions, FBA, Stockage, Ads, COGS)
+              Gain net réel après déduction de toutes les dépenses Amazon (rabais, ads, expédition FBA, commissions, stockage) — hors COGS
             </p>
           </div>
         </div>
@@ -385,7 +377,7 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* KPI CARDS : REVENUS, COÛTS, PUB & VRAI ROI */}
+      {/* KPI CARDS : REVENUS, DÉPENSES, ACOS/TACOS & BÉNÉFICE PAR PRODUIT */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
@@ -405,44 +397,46 @@ export default function AmazonDetailTab() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-slate-500">Coûts Amazon + COGS</p>
-              <h4 className="text-2xl font-black text-rose-600 mt-1">-{formatCurrency(totalAllCosts)}</h4>
+              <p className="text-[11px] font-extrabold uppercase text-slate-500">Dépenses Totales Amazon</p>
+              <h4 className="text-2xl font-black text-rose-600 mt-1">-{formatCurrency(summary.expenses)}</h4>
             </div>
             <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
               <Percent className="w-4 h-4" />
             </div>
           </div>
           <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            Amazon : -{formatCurrency(summary.expenses)} ({realCostRate.toFixed(1)}%) • COGS : -{formatCurrency(summary.cogsTotal)}
+            Poids sur CA HT : <b className="text-rose-700">{realCostRate.toFixed(1)}%</b> (FBA, Com, Ads, Stock)
           </p>
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-slate-500">Amazon Ads Réel (Facturé)</p>
-              <h4 className="text-2xl font-black text-amber-600 mt-1">-{formatCurrency(summary.adSpend)}</h4>
+              <p className="text-[11px] font-extrabold uppercase text-slate-500">Amazon Ads — TACOS & ACOS</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <h4 className="text-2xl font-black text-amber-600">-{formatCurrency(summary.adSpend)}</h4>
+              </div>
             </div>
             <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
               <Megaphone className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
-            TACOS HT : <b className="text-amber-700">{realAcos.toFixed(1)}%</b> • ROAS HT : <b className="text-slate-800">{realRoas.toFixed(2)}x</b>
-          </p>
+          <div className="text-[11px] text-slate-600 font-semibold mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+            <span>TACOS : <b className="text-amber-700">{tacosGlobal.toFixed(1)}%</b></span>
+            <span>ACOS : <b className="text-indigo-700">{acosGlobal > 0 ? `${acosGlobal.toFixed(1)}%` : '—'}</b></span>
+            <span>ROAS : <b className="text-slate-800">{realRoas.toFixed(2)}x</b></span>
+          </div>
         </div>
 
         <div className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 shadow-md">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[11px] font-extrabold uppercase text-emerald-400">Vrai Résultat Net & ROI</p>
+              <p className="text-[11px] font-extrabold uppercase text-emerald-400">Bénéfice par Produit (Hors COGS)</p>
               <div className="flex items-baseline gap-2 mt-1">
-                <h4 className={`text-2xl font-black ${summary.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {formatCurrency(summary.netProfit)}
+                <h4 className={`text-2xl font-black ${benefitPerUnitGlobal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatCurrency(benefitPerUnitGlobal)}
                 </h4>
-                <span className="text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
-                  ROI {trueRoiPct.toFixed(1)}%
-                </span>
+                <span className="text-xs font-bold text-slate-400">/ prod</span>
               </div>
             </div>
             <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
@@ -450,19 +444,10 @@ export default function AmazonDetailTab() {
             </div>
           </div>
           <div className="text-[11px] text-slate-300 font-semibold mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
-            <span>Marge nette HT : <b className="text-white">{netMarginPct.toFixed(1)}%</b></span>
-            <label className="flex items-center gap-1">
-              <span className="text-slate-400">COGS/u:</span>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={unitCogs}
-                onChange={(e) => setUnitCogs(parseFloat(e.target.value) || 0)}
-                className="w-12 bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-center text-white font-bold text-[11px]"
-              />
-              <span>€</span>
-            </label>
+            <span>Total net : <b className="text-emerald-400">{formatCurrency(summary.netBenefit)}</b></span>
+            <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-black">
+              Marge {netMarginPct.toFixed(1)}%
+            </span>
           </div>
         </div>
       </div>
@@ -632,12 +617,12 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* GRAPHIQUE COMPARATIF MENSUEL (BÉNÉFICE NET RÉEL VS COÛTS) */}
+      {/* GRAPHIQUE COMPARATIF MENSUEL (BÉNÉFICE NET VS COÛTS AMAZON) */}
       {chartData.length > 0 && (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
           <div className="mb-4">
-            <h4 className="text-sm font-extrabold text-slate-900">Évolution Mensuelle : Bénéfice Net Réel vs Coûts Totaux (FBA, Ads, COGS)</h4>
-            <p className="text-xs text-slate-500">Décomposition du Revenu Net HT mois par mois (COGS fixé à {formatCurrency(unitCogs)}/u)</p>
+            <h4 className="text-sm font-extrabold text-slate-900">Évolution Mensuelle : Bénéfice Net Amazon vs Frais & Publicité</h4>
+            <p className="text-xs text-slate-500">Répartition exacte de chaque euro de Revenu Net HT (hors COGS)</p>
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -647,8 +632,7 @@ export default function AmazonDetailTab() {
                 <YAxis stroke="#64748b" fontSize={11} fontWeight={600} tickLine={false} tickFormatter={(v) => `${v} €`} />
                 <Tooltip formatter={(val) => formatCurrency(val)} />
                 <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
-                <Bar dataKey="Bénéfice Net Réel (après COGS)" stackId="a" fill="#10b981" />
-                <Bar dataKey="COGS Fabrication" stackId="a" fill="#6366f1" />
+                <Bar dataKey="Bénéfice Net Amazon" stackId="a" fill="#10b981" />
                 <Bar dataKey="Frais Amazon & FBA" stackId="a" fill="#f43f5e" />
                 <Bar dataKey="Amazon Ads" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -657,14 +641,14 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* TABLEAU HISTORIQUE DÉTAILLÉ DES RAPPORTS PDF + CALCUL VRAI ROI */}
+      {/* TABLEAU HISTORIQUE DÉTAILLÉ DES RAPPORTS PDF + BÉNÉFICE PAR PRODUIT, TACOS & ACOS */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <FileText className="w-5 h-5 text-amber-600" />
             <div>
-              <h4 className="text-sm font-extrabold text-slate-900">Historique Comparatif Mensuel & Calcul du Vrai ROI Amazon</h4>
-              <p className="text-xs text-slate-500">Synthèse exacte de Juillet à Octobre 2026 (PDF Seller Central + CSV FBA + COGS)</p>
+              <h4 className="text-sm font-extrabold text-slate-900">Historique Mensuel — Bénéfice par Produit, ACOS & TACOS</h4>
+              <p className="text-xs text-slate-500">Synthèse exacte après déduction de toutes les dépenses Amazon (hors COGS)</p>
             </div>
           </div>
         </div>
@@ -702,7 +686,7 @@ export default function AmazonDetailTab() {
                 >
                   <td className="px-6 py-3 flex items-center gap-2">
                     <ChevronRight className={`w-4 h-4 text-indigo-600 transition-transform ${expanded.revenues ? 'rotate-90' : ''}`} />
-                    <span>REVENUS TOTAUX (HT)</span>
+                    <span>REVENUS NETS HT (Après rabais/retours)</span>
                   </td>
                   {sortedChrono.map(r => (
                     <td key={r.period_key} className="px-4 py-3 text-center text-sm font-black text-indigo-900">
@@ -741,7 +725,7 @@ export default function AmazonDetailTab() {
                 >
                   <td className="px-6 py-3 flex items-center gap-2">
                     <ChevronRight className={`w-4 h-4 text-rose-600 transition-transform ${expanded.expenses ? 'rotate-90' : ''}`} />
-                    <span>DÉPENSES & COÛTS RÉELS AMAZON</span>
+                    <span>DÉPENSES TOTALES AMAZON</span>
                   </td>
                   {sortedChrono.map(r => (
                     <td key={r.period_key} className="px-4 py-3 text-center text-sm font-black text-rose-700">
@@ -754,13 +738,6 @@ export default function AmazonDetailTab() {
                     <tr className="text-[11px] text-slate-700">
                       <td className="px-10 py-2">Frais d'expédition FBA (Transaction)</td>
                       {sortedChrono.map(r => <td key={r.period_key} className="px-4 py-2 text-center font-semibold text-rose-600">{formatCurrency(r.fba_transaction_fees)}</td>)}
-                    </tr>
-                    <tr className="text-[11px] text-slate-700">
-                      <td className="px-10 py-2">Coût FBA moyen par produit vendu</td>
-                      {sortedChrono.map(r => {
-                        const m = computeMetrics(r);
-                        return <td key={r.period_key} className="px-4 py-2 text-center font-bold text-amber-700">{formatCurrency(m.avgFbaPerUnit)} / prod</td>;
-                      })}
                     </tr>
                     <tr className="text-[11px] text-slate-700">
                       <td className="px-10 py-2">Frais de vente / Commission Marketplace</td>
@@ -808,41 +785,79 @@ export default function AmazonDetailTab() {
                   </>
                 )}
 
-                {/* SECTION CALCUL VRAI ROI */}
-                <tr className="bg-slate-900 text-white font-black border-t-2 border-slate-700">
-                  <td className="px-6 py-3 text-xs uppercase">
-                    Coût de revient Produits (COGS à {formatCurrency(unitCogs)}/u)
-                  </td>
-                  {sortedChrono.map(r => {
-                    const m = computeMetrics(r);
-                    return (
-                      <td key={r.period_key} className="px-4 py-3 text-center text-indigo-300">
-                        -{formatCurrency(m.cogsTotal)} <span className="text-[10px] text-slate-400">({m.units} u)</span>
-                      </td>
-                    );
-                  })}
-                </tr>
-
-                <tr className="bg-emerald-950 text-white font-black border-t border-emerald-800">
+                {/* BÉNÉFICE NET GLOBAL (HORS COGS) */}
+                <tr className="bg-emerald-950 text-white font-black border-t-2 border-emerald-800">
                   <td className="px-6 py-3.5 text-xs uppercase tracking-wider">
-                    💎 BÉNÉFICE NET RÉEL & VRAI ROI AMAZON
+                    💎 BÉNÉFICE NET AMAZON (Hors COGS)
                   </td>
                   {sortedChrono.map(r => {
                     const m = computeMetrics(r);
                     return (
                       <td key={r.period_key} className="px-4 py-3.5 text-center">
-                        <div className={`text-sm font-black ${m.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
-                          {formatCurrency(m.netProfit)}
+                        <div className={`text-sm font-black ${m.netBenefit >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                          {formatCurrency(m.netBenefit)}
                         </div>
                         <div className="text-[10px] font-bold text-emerald-400 mt-0.5">
-                          ROI {m.trueRoiPct.toFixed(1)}% • Marge {m.netMarginPct.toFixed(1)}%
+                          Marge {m.netMarginPct.toFixed(1)}% ({m.units} prod.)
                         </div>
                       </td>
                     );
                   })}
                 </tr>
 
-                <tr className="bg-slate-800 text-slate-200 font-bold border-t border-slate-700">
+                {/* BÉNÉFICE PAR PRODUIT VENDU */}
+                <tr className="bg-slate-900 text-white font-black border-t border-slate-800">
+                  <td className="px-6 py-3.5 text-xs uppercase tracking-wider text-emerald-400">
+                    📦 BÉNÉFICE PAR PRODUIT VENDU
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-3.5 text-center">
+                        <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-sm font-black">
+                          {formatCurrency(m.benefitPerUnit)} / prod
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                {/* TACOS & ACOS */}
+                <tr className="bg-slate-900 text-slate-200 font-bold border-t border-slate-800">
+                  <td className="px-6 py-3 text-xs uppercase">
+                    📣 TACOS & ACOS
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-3 text-center text-xs space-y-1.5">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-amber-300 font-extrabold">TACOS : {m.tacosPct.toFixed(1)}%</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-1 text-[11px]">
+                          <span className="text-indigo-300 font-bold">
+                            ACOS : {m.acosPct > 0 ? `${m.acosPct.toFixed(1)}%` : '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400">
+                          <span>CA Ads (€):</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="CA Pub"
+                            defaultValue={r.ad_attributed_sales || ''}
+                            onBlur={(e) => handleSaveAdSales(r.period_key, e.target.value)}
+                            className="w-16 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-center text-white text-[10px] font-bold"
+                            title="Saisir le CA attribué aux annonces (Campaign Manager) pour calculer l'ACOS exact"
+                          />
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                {/* VIREMENT BANCAIRE */}
+                <tr className="bg-slate-800 text-slate-300 font-bold border-t border-slate-700">
                   <td className="px-6 py-3 text-[11px] uppercase">
                     🏦 Virement Bancaire Amazon (Dépôt)
                   </td>

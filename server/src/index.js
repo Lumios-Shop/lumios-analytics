@@ -646,6 +646,20 @@ app.get('/api/amazon/reports', requireAuth, async (req, res) => {
   }
 });
 
+app.patch('/api/amazon/reports/:periodKey/ad-sales', requireAuth, async (req, res) => {
+  const { ad_attributed_sales } = req.body;
+  try {
+    const db = getDb();
+    await db.run(
+      `UPDATE amazon_monthly_reports SET ad_attributed_sales = ? WHERE period_key = ?`,
+      [parseFloat(ad_attributed_sales) || 0, req.params.periodKey]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Impossible de mettre à jour le CA attribué Amazon Ads.' });
+  }
+});
+
 app.post('/api/amazon/reports/upload', requireAuth, async (req, res) => {
   const { pdfBase64 } = req.body;
   if (!pdfBase64) {
