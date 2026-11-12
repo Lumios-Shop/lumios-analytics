@@ -32,6 +32,16 @@ export default function ConfigPanel({ onConfigUpdated }) {
   const [paymentFees, setPaymentFees] = useState(defaultPaymentFees);
   const [shippingCosts, setShippingCosts] = useState(defaultShippingCosts);
 
+  // Historique mensuel des coûts d'expédition Shopify (Colis Privé, Mondial Relay, Express)
+  const [monthlyShipping, setMonthlyShipping] = useState([]);
+  const [monthlyShipInput, setMonthlyShipInput] = useState({
+    period_key: new Date().toISOString().slice(0, 7),
+    domicile_cost: '5.50',
+    relais_cost: '3.50',
+    express_cost: '9.90'
+  });
+  const [savingMonthlyShip, setSavingMonthlyShip] = useState(false);
+
   // États pour Dépenses Ads
   const [adSpendsInput, setAdSpendsInput] = useState({
     monthYear: '2026-07',
@@ -131,6 +141,53 @@ export default function ConfigPanel({ onConfigUpdated }) {
     }
   };
 
+  const fetchMonthlyShipping = async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/config/monthly-shipping-costs`);
+      if (res.ok) {
+        const data = await res.json();
+        setMonthlyShipping(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveMonthlyShipping = async (e) => {
+    e.preventDefault();
+    setSavingMonthlyShip(true);
+    try {
+      const res = await authFetch(`${API_BASE}/config/monthly-shipping-costs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(monthlyShipInput)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMonthlyShipping(data.rows || []);
+        await fetchShippingCosts();
+        setMessage('Historique mensuel d\'expédition enregistré !');
+        setTimeout(() => setMessage(null), 3000);
+        if (onConfigUpdated) onConfigUpdated();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingMonthlyShip(false);
+    }
+  };
+
+  const handleDeleteMonthlyShipping = async (periodKey) => {
+    try {
+      const res = await authFetch(`${API_BASE}/config/monthly-shipping-costs/${periodKey}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchMonthlyShipping();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Charger URL Google Sheet
   const fetchGoogleSheetConfig = async () => {
     try {
@@ -148,6 +205,7 @@ export default function ConfigPanel({ onConfigUpdated }) {
     fetchConfig();
     fetchPaymentFees();
     fetchShippingCosts();
+    fetchMonthlyShipping();
     fetchGoogleSheetConfig();
   }, []);
 
@@ -640,12 +698,120 @@ export default function ConfigPanel({ onConfigUpdated }) {
                 <input
                   type="number"
                   step="0.10"
-                  defaultValue="4.25"
+                  defaultValue="7.29"
                   className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5 focus:ring-2 focus:ring-amber-500"
                 />
-                <p className="text-[11px] text-slate-500 mt-1 font-medium">Frais fixes prélevés par Amazon par article expédié via FBA.</p>
+                <p className="text-[11px] text-slate-500 mt-1 font-medium">Frais moyens réels prélevés par Amazon par article expédié via FBA.</p>
               </div>
             </div>
+          </div>
+
+          {/* HISTORIQUE MENSUEL COLIS PRIVÉ & MONDIAL RELAY */}
+          <div className="pt-6 border-t border-slate-200/80 space-y-4">
+            <div>
+              <h5 className="text-sm font-extrabold text-slate-900">Historique Mensuel — Colis Privé (Domicile) & Mondial Relay</h5>
+              <p className="text-xs text-slate-500">Renseignez vos tarifs mensuels réels pour suivre l'évolution en % dans l'onglet Livraisons & Transport</p>
+            </div>
+
+            <form onSubmit={handleSaveMonthlyShipping} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-slate-50 border border-slate-200/80 rounded-xl items-end">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mois (AAAA-MM)</label>
+                <input
+                  type="month"
+                  value={monthlyShipInput.period_key}
+                  onChange={(e) => setMonthlyShipInput({ ...monthlyShipInput, period_key: e.target.value })}
+                  required
+                  className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-emerald-700 mb-1">Colis Privé / Domicile (€ HT)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={monthlyShipInput.domicile_cost}
+                  onChange={(e) => setMonthlyShipInput({ ...monthlyShipInput, domicile_cost: e.target.value })}
+                  required
+                  className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-teal-700 mb-1">Mondial Relay (€ HT)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={monthlyShipInput.relais_cost}
+                  onChange={(e) => setMonthlyShipInput({ ...monthlyShipInput, relais_cost: e.target.value })}
+                  required
+                  className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-amber-700 mb-1">Express (€ HT)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={monthlyShipInput.express_cost}
+                  onChange={(e) => setMonthlyShipInput({ ...monthlyShipInput, express_cost: e.target.value })}
+                  className="w-full bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl p-2.5"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingMonthlyShip}
+                className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer shadow-xs"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {savingMonthlyShip ? 'Enregistrement...' : 'Enregistrer le mois'}
+              </button>
+            </form>
+
+            {monthlyShipping.length > 0 && (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-extrabold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2.5">Mois</th>
+                      <th className="px-4 py-2.5 text-center text-emerald-700">Colis Privé (Domicile)</th>
+                      <th className="px-4 py-2.5 text-center text-teal-700">Mondial Relay</th>
+                      <th className="px-4 py-2.5 text-center text-amber-700">Express</th>
+                      <th className="px-4 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {monthlyShipping.map(row => (
+                      <tr key={row.period_key} className="hover:bg-slate-50">
+                        <td className="px-4 py-2.5 font-extrabold text-slate-900">{row.period_key}</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-emerald-700">{Number(row.domicile_cost).toFixed(2)} €</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-teal-700">{Number(row.relais_cost).toFixed(2)} €</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-amber-700">{Number(row.express_cost).toFixed(2)} €</td>
+                        <td className="px-4 py-2.5 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => setMonthlyShipInput({
+                              period_key: row.period_key,
+                              domicile_cost: String(row.domicile_cost),
+                              relais_cost: String(row.relais_cost),
+                              express_cost: String(row.express_cost)
+                            })}
+                            className="text-indigo-600 hover:underline font-bold cursor-pointer"
+                          >
+                            Modifier
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMonthlyShipping(row.period_key)}
+                            className="text-rose-500 hover:underline font-bold cursor-pointer"
+                          >
+                            Supprimer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

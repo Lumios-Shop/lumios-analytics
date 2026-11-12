@@ -396,6 +396,61 @@ app.post('/api/config/shipping-costs', requireAuth, async (req, res) => {
 });
 
 /**
+ * Endpoints : Historique mensuel des coûts d'expédition Shopify (Colis Privé, Mondial Relay, Express)
+ */
+app.get('/api/config/monthly-shipping-costs', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const rows = await db.all(`SELECT * FROM monthly_shipping_costs ORDER BY period_key DESC`);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Impossible de charger l\'historique des coûts d\'expédition.' });
+  }
+});
+
+app.post('/api/config/monthly-shipping-costs', requireAuth, async (req, res) => {
+  const { period_key, domicile_cost, relais_cost, express_cost } = req.body;
+  if (!period_key || !/^\d{4}-\d{2}$/.test(period_key)) {
+    return res.status(400).json({ error: 'Format de mois invalide (attendu YYYY-MM).' });
+  }
+  try {
+    const db = getDb();
+    const dom = parseFloat(domicile_cost) || 0;
+    const rel = parseFloat(relais_cost) || 0;
+    const exp = parseFloat(express_cost) || 9.90;
+
+    await db.run(
+      `INSERT OR REPLACE INTO monthly_shipping_costs (period_key, domicile_cost, relais_cost, express_cost, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [period_key, dom, rel, exp, new Date().toISOString()]
+    );
+
+    // Si c'est le mois le plus récent, synchroniser aussi les tarifs par défaut dans shipping_method_costs
+    const latest = await db.get(`SELECT period_key FROM monthly_shipping_costs ORDER BY period_key DESC LIMIT 1`);
+    if (latest?.period_key === period_key) {
+      await db.run(`UPDATE shipping_method_costs SET cost_per_order = ? WHERE code = 'domicile'`, [dom]);
+      await db.run(`UPDATE shipping_method_costs SET cost_per_order = ? WHERE code = 'relais'`, [rel]);
+    }
+
+    const rows = await db.all(`SELECT * FROM monthly_shipping_costs ORDER BY period_key DESC`);
+    res.json({ success: true, rows });
+  } catch (error) {
+    console.error('Erreur sauvegarde coûts mensuels expédition:', error);
+    res.status(500).json({ error: 'Erreur lors de la sauvegarde.' });
+  }
+});
+
+app.delete('/api/config/monthly-shipping-costs/:periodKey', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    await db.run(`DELETE FROM monthly_shipping_costs WHERE period_key = ?`, [req.params.periodKey]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Impossible de supprimer ce mois.' });
+  }
+});
+
+/**
  * Endpoint : Obtenir ou enregistrer les dépenses publicitaires (Ads)
  * GET /api/config/ad-spends?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * POST /api/config/ad-spends

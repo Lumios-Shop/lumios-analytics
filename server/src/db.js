@@ -284,6 +284,25 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_amz_tx_order ON amazon_transactions(order_id);
   `);
 
+  // Table pour l'historique mensuel des coûts d'expédition Shopify (Colis Privé, Mondial Relay, Express)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS monthly_shipping_costs (
+      period_key TEXT PRIMARY KEY,
+      domicile_cost REAL DEFAULT 5.50,
+      relais_cost REAL DEFAULT 3.50,
+      express_cost REAL DEFAULT 9.90,
+      updated_at TEXT
+    );
+  `);
+
+  for (const pk of ['2026-07', '2026-08', '2026-09', '2026-10']) {
+    await db.run(
+      `INSERT OR IGNORE INTO monthly_shipping_costs (period_key, domicile_cost, relais_cost, express_cost, updated_at)
+       VALUES (?, 5.50, 3.50, 9.90, '2026-11-12T09:00:00Z')`,
+      [pk]
+    );
+  }
+
   return db;
 }
 
