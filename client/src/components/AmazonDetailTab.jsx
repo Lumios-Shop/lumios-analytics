@@ -13,7 +13,8 @@ import {
   FileSpreadsheet,
   RefreshCw,
   ArrowRightLeft,
-  TrendingUp
+  TrendingUp,
+  Tag
 } from 'lucide-react';
 import {
   BarChart,
@@ -240,10 +241,17 @@ export default function AmazonDetailTab() {
     const units = r.csv_units > 0 ? r.csv_units : Math.round(revenuesHt / 33.33);
     const orders = r.csv_orders > 0 ? r.csv_orders : units;
 
+    // Commission FBA globale (hors pubs ads et transport)
+    // Regroupe tous les autres frais Amazon : frais de vente (commission marketplace), stockage, abonnement et autres services
+    const globalFbaCommission = Math.max(0, amazonExpenses - adSpend - fbaFees);
+    const globalFbaCommissionPct = revenuesHt > 0 ? (globalFbaCommission / revenuesHt) * 100 : 0;
+    const globalFbaCommissionPerUnit = units > 0 ? globalFbaCommission / units : 0;
+
     const netBenefit = revenuesHt - amazonExpenses;
     const benefitPerUnit = units > 0 ? netBenefit / units : 0;
     const netMarginPct = revenuesHt > 0 ? (netBenefit / revenuesHt) * 100 : 0;
     const avgFbaPerUnit = units > 0 ? fbaFees / units : 0;
+    const fbaCostPct = revenuesHt > 0 ? (fbaFees / revenuesHt) * 100 : 0;
 
     const tacosPct = revenuesHt > 0 ? (adSpend / revenuesHt) * 100 : 0;
     const adAttributedSales = r.ad_attributed_sales || 0;
@@ -259,10 +267,14 @@ export default function AmazonDetailTab() {
       storageFees,
       units,
       orders,
+      globalFbaCommission,
+      globalFbaCommissionPct,
+      globalFbaCommissionPerUnit,
       netBenefit,
       benefitPerUnit,
       netMarginPct,
       avgFbaPerUnit,
+      fbaCostPct,
       tacosPct,
       adAttributedSales,
       acosPct,
@@ -278,6 +290,7 @@ export default function AmazonDetailTab() {
     acc.adSpend += m.adSpend;
     acc.adAttributedSales += m.adAttributedSales;
     acc.fbaFees += m.fbaFees;
+    acc.globalFbaCommission += m.globalFbaCommission;
     acc.units += m.units;
     acc.orders += m.orders;
     acc.netBenefit += m.netBenefit;
@@ -285,13 +298,16 @@ export default function AmazonDetailTab() {
     return acc;
   }, {
     revenues: 0, taxes: 0, expenses: 0, adSpend: 0, adAttributedSales: 0,
-    fbaFees: 0, units: 0, orders: 0, netBenefit: 0, transfers: 0
+    fbaFees: 0, globalFbaCommission: 0, units: 0, orders: 0, netBenefit: 0, transfers: 0
   });
 
   const totalTtc = summary.revenues + summary.taxes;
   const benefitPerUnitGlobal = summary.units > 0 ? summary.netBenefit / summary.units : 0;
   const netMarginPct = summary.revenues > 0 ? (summary.netBenefit / summary.revenues) * 100 : 0;
   const realCostRate = summary.revenues > 0 ? (summary.expenses / summary.revenues) * 100 : 0;
+  const globalFbaCommissionPct = summary.revenues > 0 ? (summary.globalFbaCommission / summary.revenues) * 100 : 0;
+  const globalFbaCommissionPerUnit = summary.units > 0 ? summary.globalFbaCommission / summary.units : 0;
+  const fbaCostGlobalPct = summary.revenues > 0 ? (summary.fbaFees / summary.revenues) * 100 : 0;
   const tacosGlobal = summary.revenues > 0 ? (summary.adSpend / summary.revenues) * 100 : 0;
   const acosGlobal = summary.adAttributedSales > 0 ? (summary.adSpend / summary.adAttributedSales) * 100 : 0;
   const realRoas = summary.adSpend > 0 ? (summary.revenues / summary.adSpend) : 0;
@@ -301,7 +317,8 @@ export default function AmazonDetailTab() {
     return {
       name: r.period_label,
       'Bénéfice Net Amazon': Math.round(m.netBenefit * 100) / 100,
-      'Frais Amazon & FBA': Math.round((m.amazonExpenses - m.adSpend) * 100) / 100,
+      'Commission FBA globale': Math.round(m.globalFbaCommission * 100) / 100,
+      'Transport FBA': Math.round(m.fbaFees * 100) / 100,
       'Amazon Ads': Math.round(m.adSpend * 100) / 100
     };
   });
@@ -377,8 +394,8 @@ export default function AmazonDetailTab() {
         </div>
       )}
 
-      {/* KPI CARDS : REVENUS, DÉPENSES, ACOS/TACOS & BÉNÉFICE PAR PRODUIT */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI CARDS : REVENUS, DÉPENSES, COMMISSION FBA GLOBALE, ACOS/TACOS & BÉNÉFICE PAR PRODUIT */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
@@ -406,6 +423,33 @@ export default function AmazonDetailTab() {
           </div>
           <p className="text-[11px] text-slate-500 font-semibold mt-3 pt-2.5 border-t border-slate-100">
             Poids sur CA HT : <b className="text-rose-700">{realCostRate.toFixed(1)}%</b> (FBA, Com, Ads, Stock)
+          </p>
+        </div>
+
+        {/* NOUVELLE CARTE : COMMISSION FBA GLOBALE (HORS PUBS ADS ET TRANSPORT) */}
+        <div className="bg-white border-2 border-indigo-300 rounded-2xl p-5 shadow-xs relative overflow-hidden bg-gradient-to-br from-indigo-50/50 via-white to-white">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[11px] font-black uppercase text-indigo-700 tracking-wide">
+                Commission FBA Globale
+              </p>
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <h4 className="text-2xl font-black text-indigo-900">{globalFbaCommissionPct.toFixed(1)}%</h4>
+                <span className="text-[11px] font-bold text-indigo-600">du CA HT</span>
+              </div>
+            </div>
+            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+              <Tag className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-[11px] text-slate-700 font-bold mt-3 pt-2.5 border-t border-indigo-100 flex items-center justify-between">
+            <span>Total : <b className="text-indigo-900">-{formatCurrency(summary.globalFbaCommission)}</b></span>
+            <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md font-black">
+              {formatCurrency(globalFbaCommissionPerUnit)} / prod
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 font-medium mt-1.5 leading-tight">
+            Hors pubs ads & transport (frais de vente, stockage, services)
           </p>
         </div>
 
@@ -448,6 +492,77 @@ export default function AmazonDetailTab() {
             <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-black">
               Marge {netMarginPct.toFixed(1)}%
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* DÉCOMPOSITION COMPLÈTE DU CA HT AMAZON (100%) */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <Percent className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs font-extrabold text-slate-900">
+              Décomposition du Revenu Net HT Amazon (100%) :
+            </span>
+          </div>
+          <span className="text-xs text-slate-500 font-medium">
+            CA Net HT analysé : <b className="text-slate-800">{formatCurrency(summary.revenues)}</b>
+          </span>
+        </div>
+        <div className="w-full bg-slate-100 rounded-xl h-4 overflow-hidden flex shadow-inner">
+          <div
+            style={{ width: `${Math.min(100, Math.max(0, globalFbaCommissionPct))}%` }}
+            className="bg-indigo-600 transition-all"
+            title={`Commission FBA globale (hors pub et transport) : ${globalFbaCommissionPct.toFixed(1)}% (-${formatCurrency(summary.globalFbaCommission)})`}
+          />
+          <div
+            style={{ width: `${Math.min(100, Math.max(0, fbaCostGlobalPct))}%` }}
+            className="bg-rose-500 transition-all"
+            title={`Transport FBA : ${fbaCostGlobalPct.toFixed(1)}% (-${formatCurrency(summary.fbaFees)})`}
+          />
+          <div
+            style={{ width: `${Math.min(100, Math.max(0, tacosGlobal))}%` }}
+            className="bg-amber-500 transition-all"
+            title={`Amazon Ads (TACOS) : ${tacosGlobal.toFixed(1)}% (-${formatCurrency(summary.adSpend)})`}
+          />
+          <div
+            style={{ width: `${Math.min(100, Math.max(0, netMarginPct))}%` }}
+            className="bg-emerald-500 transition-all"
+            title={`Bénéfice Net restant : ${netMarginPct.toFixed(1)}% (${formatCurrency(summary.netBenefit)})`}
+          />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-md bg-indigo-600 shrink-0" />
+            <div>
+              <span className="text-slate-500 font-medium">Commission FBA globale :</span>{' '}
+              <b className="text-indigo-900 font-black">{globalFbaCommissionPct.toFixed(1)}%</b>{' '}
+              <span className="text-[11px] text-slate-400">(-{formatCurrency(summary.globalFbaCommission)})</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-md bg-rose-500 shrink-0" />
+            <div>
+              <span className="text-slate-500 font-medium">Transport FBA :</span>{' '}
+              <b className="text-rose-700 font-black">{fbaCostGlobalPct.toFixed(1)}%</b>{' '}
+              <span className="text-[11px] text-slate-400">(-{formatCurrency(summary.fbaFees)})</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-md bg-amber-500 shrink-0" />
+            <div>
+              <span className="text-slate-500 font-medium">Amazon Ads (TACOS) :</span>{' '}
+              <b className="text-amber-700 font-black">{tacosGlobal.toFixed(1)}%</b>{' '}
+              <span className="text-[11px] text-slate-400">(-{formatCurrency(summary.adSpend)})</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-md bg-emerald-500 shrink-0" />
+            <div>
+              <span className="text-slate-500 font-medium">Bénéfice Net (Hors COGS) :</span>{' '}
+              <b className="text-emerald-700 font-black">{netMarginPct.toFixed(1)}%</b>{' '}
+              <span className="text-[11px] text-slate-400">({formatCurrency(summary.netBenefit)})</span>
+            </div>
           </div>
         </div>
       </div>
@@ -633,7 +748,8 @@ export default function AmazonDetailTab() {
                 <Tooltip formatter={(val) => formatCurrency(val)} />
                 <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
                 <Bar dataKey="Bénéfice Net Amazon" stackId="a" fill="#10b981" />
-                <Bar dataKey="Frais Amazon & FBA" stackId="a" fill="#f43f5e" />
+                <Bar dataKey="Commission FBA globale" stackId="a" fill="#6366f1" />
+                <Bar dataKey="Transport FBA" stackId="a" fill="#f43f5e" />
                 <Bar dataKey="Amazon Ads" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -784,6 +900,71 @@ export default function AmazonDetailTab() {
                     </tr>
                   </>
                 )}
+
+                {/* SYNTHÈSE DES 3 COMPOSANTES COÛTS : COMMISSION FBA GLOBALE, TRANSPORT & ADS */}
+                <tr className="bg-gradient-to-r from-indigo-100/90 via-indigo-50/80 to-white font-black border-t-2 border-indigo-300 text-indigo-950">
+                  <td className="px-6 py-3.5 text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <Percent className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <div>
+                        <div className="font-black text-indigo-950 text-xs">
+                          🏷️ Commission FBA globale (hors pubs ads et transport)
+                        </div>
+                        <div className="text-[10px] font-medium text-slate-500 normal-case mt-0.5">
+                          Regroupe tous les autres frais Amazon (commission de vente, stockage, services)
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-3.5 text-center bg-indigo-50/40">
+                        <div className="inline-block px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-black text-xs shadow-xs">
+                          {m.globalFbaCommissionPct.toFixed(1)} %
+                        </div>
+                        <div className="text-[11px] font-extrabold text-indigo-950 mt-1">
+                          -{formatCurrency(m.globalFbaCommission)}
+                        </div>
+                        <div className="text-[10px] font-semibold text-slate-500">
+                          ({formatCurrency(m.globalFbaCommissionPerUnit)} / prod)
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                <tr className="text-xs bg-slate-50/80 font-bold text-slate-700 border-t border-slate-200/80">
+                  <td className="px-10 py-2.5 flex items-center justify-between">
+                    <span className="text-slate-600">↳ Coût Transport FBA (Expédié par Amazon)</span>
+                    <span className="text-[10px] font-semibold text-slate-400">Poids sur CA HT</span>
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-2.5 text-center">
+                        <span className="font-extrabold text-rose-700">{m.fbaCostPct.toFixed(1)} %</span>
+                        <span className="text-[10px] text-slate-500 ml-1.5">(-{formatCurrency(m.fbaFees)})</span>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                <tr className="text-xs bg-slate-50/80 font-bold text-slate-700 border-t border-slate-200/80">
+                  <td className="px-10 py-2.5 flex items-center justify-between">
+                    <span className="text-amber-800">↳ Coût Amazon Ads (TACOS)</span>
+                    <span className="text-[10px] font-semibold text-slate-400">Poids sur CA HT</span>
+                  </td>
+                  {sortedChrono.map(r => {
+                    const m = computeMetrics(r);
+                    return (
+                      <td key={r.period_key} className="px-4 py-2.5 text-center">
+                        <span className="font-extrabold text-amber-700">{m.tacosPct.toFixed(1)} %</span>
+                        <span className="text-[10px] text-slate-500 ml-1.5">(-{formatCurrency(m.adSpend)})</span>
+                      </td>
+                    );
+                  })}
+                </tr>
 
                 {/* BÉNÉFICE NET GLOBAL (HORS COGS) */}
                 <tr className="bg-emerald-950 text-white font-black border-t-2 border-emerald-800">
