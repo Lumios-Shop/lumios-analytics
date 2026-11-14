@@ -66,7 +66,10 @@ export default function Dashboard({ refreshTrigger }) {
       setMonthlySalesData(monthlyData);
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Erreur lors du chargement des données.');
+      const isNetworkErr = !err.response && (err.message?.includes('fetch') || err.message?.includes('Network') || err.name === 'TypeError');
+      setError(isNetworkErr
+        ? 'Impossible de joindre le serveur local (Failed to fetch). Votre PC est-il allumé et le serveur actif ?'
+        : (err.message || 'Erreur lors du chargement des données.'));
     } finally {
       setLoading(false);
     }
@@ -218,9 +221,26 @@ export default function Dashboard({ refreshTrigger }) {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl animate-fadeIn">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-500" />
-          <span>{error}</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-rose-50 border border-rose-200 text-rose-850 text-sm rounded-2xl animate-fadeIn shadow-xs">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
+            <div>
+              <p className="font-extrabold text-rose-950">
+                {error}
+              </p>
+              <p className="text-xs text-rose-700 mt-0.5 font-medium">
+                Si votre PC vient de sortir de veille ou d'être redémarré, cliquez ci-contre pour relancer la connexion.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchSalesData(filter.startDate, filter.endDate, filter.granularity || 'daily', true)}
+            disabled={loading}
+            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Connexion en cours...' : 'Reconnecter / Réessayer'}
+          </button>
         </div>
       )}
 
