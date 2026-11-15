@@ -191,7 +191,16 @@ async function performSync(startDate, endDate) {
           item.revenue,
           item.fees,
           item.shippingCost || 0.0,
-          0.0, 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0
+          item.discounts || 0.0,
+          item.returns || 0.0,
+          0,
+          0,
+          item.domicileOrders || 0,
+          item.relaisOrders || 0,
+          0.0,
+          0.0,
+          item.domicileRevenue || 0.0,
+          item.relaisRevenue || 0.0
         );
         await insertCostStmt.run(item.sku, item.name, 'amazon');
       }
@@ -256,12 +265,15 @@ async function performSync(startDate, endDate) {
         }
         for (const order of amazonData.rawOrders) {
           const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+          const isFbm = order.FulfillmentChannel !== 'AFN';
+          const sku = isFbm ? 'LUMIOS-FBM' : '3O-IKFN-12HE';
+          const title = isFbm ? 'Lumios - Le Jeu (Vente Directe FBM)' : 'Lumios - Le Jeu (Expédié par Amazon FBA)';
           const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
           const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
           const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
           const items = [{
-            title: 'Lumios - Le Jeu',
-            sku: 'AMAZON-DEFAULT',
+            title: title,
+            sku: sku,
             quantity: qty,
             price: 40.00
           }];
@@ -274,10 +286,10 @@ async function performSync(startDate, endDate) {
             order.PurchaseDate,
             revenue,
             qty,
-            `${qty}x Lumios - Le Jeu`,
+            `${qty}x ${title}`,
             JSON.stringify(items),
             'Amazon Pay',
-            order.FulfillmentChannel === 'AFN' ? 'Expédié par Amazon (FBA)' : 'Expédié par Vendeur (FBM)',
+            isFbm ? 'Livraison à Domicile (FBM)' : 'Expédié par Amazon (FBA)',
             order.OrderStatus || 'Shipped'
           );
         }
@@ -388,7 +400,18 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       SUM(CASE WHEN s.source = 'amazon' THEN COALESCE(s.shipping_cost, 0.0) ELSE 0.0 END) as amazon_shipping,
       SUM(CASE WHEN s.source = 'amazon' THEN s.sales_count * COALESCE(c.cogs, 0.0) ELSE 0.0 END) as amazon_cogs,
       SUM(CASE WHEN s.source = 'amazon' THEN COALESCE(s.discounts, 0.0) ELSE 0.0 END) as amazon_discounts,
-      SUM(CASE WHEN s.source = 'amazon' THEN COALESCE(s.returns, 0.0) ELSE 0.0 END) as amazon_returns
+      SUM(CASE WHEN s.source = 'amazon' THEN COALESCE(s.returns, 0.0) ELSE 0.0 END) as amazon_returns,
+      -- DÉTAIL PAR SKU AMAZON : FBA (3O-IKFN-12HE) vs FBM (LUMIOS-FBM)
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku = 'LUMIOS-FBM' THEN COALESCE(s.order_count, s.sales_count) ELSE 0 END) as amazon_fbm_orders_count,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku = 'LUMIOS-FBM' THEN s.sales_count ELSE 0 END) as amazon_fbm_sales_count,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku = 'LUMIOS-FBM' THEN s.revenue ELSE 0.0 END) as amazon_fbm_revenue,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku = 'LUMIOS-FBM' THEN s.fees ELSE 0.0 END) as amazon_fbm_fees,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku = 'LUMIOS-FBM' THEN COALESCE(s.shipping_cost, 0.0) ELSE 0.0 END) as amazon_fbm_shipping,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku != 'LUMIOS-FBM' THEN COALESCE(s.order_count, s.sales_count) ELSE 0 END) as amazon_fba_orders_count,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku != 'LUMIOS-FBM' THEN s.sales_count ELSE 0 END) as amazon_fba_sales_count,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku != 'LUMIOS-FBM' THEN s.revenue ELSE 0.0 END) as amazon_fba_revenue,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku != 'LUMIOS-FBM' THEN s.fees ELSE 0.0 END) as amazon_fba_fees,
+      SUM(CASE WHEN s.source = 'amazon' AND s.sku != 'LUMIOS-FBM' THEN COALESCE(s.shipping_cost, 0.0) ELSE 0.0 END) as amazon_fba_shipping
     FROM daily_sku_sales s
     LEFT JOIN product_costs c ON s.sku = c.sku AND s.source = c.source
     WHERE s.date BETWEEN ? AND ?
@@ -526,6 +549,18 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       amazonCogs: parseFloat(amazonCogs.toFixed(2)),
       amazonDiscounts: parseFloat(amazonDiscounts.toFixed(2)),
       amazonReturns: parseFloat(amazonReturns.toFixed(2)),
+      // Détail SKU Amazon FBM (LUMIOS-FBM)
+      amazonFbmOrdersCount: Math.round(row.amazon_fbm_orders_count || 0),
+      amazonFbmSalesCount: row.amazon_fbm_sales_count || 0,
+      amazonFbmRevenue: parseFloat((row.amazon_fbm_revenue || 0).toFixed(2)),
+      amazonFbmFees: parseFloat((row.amazon_fbm_fees || 0).toFixed(2)),
+      amazonFbmShipping: parseFloat((row.amazon_fbm_shipping || 0).toFixed(2)),
+      // Détail SKU Amazon FBA (3O-IKFN-12HE)
+      amazonFbaOrdersCount: Math.round(row.amazon_fba_orders_count || 0),
+      amazonFbaSalesCount: row.amazon_fba_sales_count || 0,
+      amazonFbaRevenue: parseFloat((row.amazon_fba_revenue || 0).toFixed(2)),
+      amazonFbaFees: parseFloat((row.amazon_fba_fees || 0).toFixed(2)),
+      amazonFbaShipping: parseFloat((row.amazon_fba_shipping || 0).toFixed(2)),
       cbOrders: Math.round(row.cb_orders || 0),
       paypalOrders: Math.round(row.paypal_orders || 0),
       domicileOrders: Math.round(row.domicile_orders || 0),
@@ -595,6 +630,16 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
         amazonCogs: 0,
         amazonDiscounts: 0,
         amazonReturns: 0,
+        amazonFbmOrdersCount: 0,
+        amazonFbmSalesCount: 0,
+        amazonFbmRevenue: 0,
+        amazonFbmFees: 0,
+        amazonFbmShipping: 0,
+        amazonFbaOrdersCount: 0,
+        amazonFbaSalesCount: 0,
+        amazonFbaRevenue: 0,
+        amazonFbaFees: 0,
+        amazonFbaShipping: 0,
         cbOrders: 0,
         paypalOrders: 0,
         domicileOrders: 0,
@@ -648,6 +693,16 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
     g.amazonCogs += item.amazonCogs;
     g.amazonDiscounts += item.amazonDiscounts;
     g.amazonReturns += item.amazonReturns;
+    g.amazonFbmOrdersCount += (item.amazonFbmOrdersCount || 0);
+    g.amazonFbmSalesCount += (item.amazonFbmSalesCount || 0);
+    g.amazonFbmRevenue += (item.amazonFbmRevenue || 0);
+    g.amazonFbmFees += (item.amazonFbmFees || 0);
+    g.amazonFbmShipping += (item.amazonFbmShipping || 0);
+    g.amazonFbaOrdersCount += (item.amazonFbaOrdersCount || 0);
+    g.amazonFbaSalesCount += (item.amazonFbaSalesCount || 0);
+    g.amazonFbaRevenue += (item.amazonFbaRevenue || 0);
+    g.amazonFbaFees += (item.amazonFbaFees || 0);
+    g.amazonFbaShipping += (item.amazonFbaShipping || 0);
     g.cbOrders += item.cbOrders;
     g.paypalOrders += item.paypalOrders;
     g.domicileOrders += item.domicileOrders;
@@ -701,6 +756,12 @@ export async function syncAndGetSalesData(startDate, endDate, forceRefresh = fal
       amazonFees: parseFloat(g.amazonFees.toFixed(2)),
       amazonShipping: parseFloat(g.amazonShipping.toFixed(2)),
       amazonCogs: parseFloat(g.amazonCogs.toFixed(2)),
+      amazonFbmRevenue: parseFloat(g.amazonFbmRevenue.toFixed(2)),
+      amazonFbmFees: parseFloat(g.amazonFbmFees.toFixed(2)),
+      amazonFbmShipping: parseFloat(g.amazonFbmShipping.toFixed(2)),
+      amazonFbaRevenue: parseFloat(g.amazonFbaRevenue.toFixed(2)),
+      amazonFbaFees: parseFloat(g.amazonFbaFees.toFixed(2)),
+      amazonFbaShipping: parseFloat(g.amazonFbaShipping.toFixed(2)),
       cbRevenue: parseFloat(g.cbRevenue.toFixed(2)),
       paypalRevenue: parseFloat(g.paypalRevenue.toFixed(2)),
       domicileRevenue: parseFloat(g.domicileRevenue.toFixed(2)),

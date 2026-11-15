@@ -177,6 +177,28 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                     </td>
                   ))}
                 </tr>
+                <tr className="text-slate-500 text-[10px] bg-slate-50/40 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-indigo-500"></span>
+                    <span>↳ FBA (Expédié par Amazon)</span>
+                  </td>
+                  {sortedData.map((col) => (
+                    <td key={col.date} className="px-4 py-1 text-center font-medium text-slate-700">
+                      {formatNumber(col.amazonFbaOrdersCount ?? col.amazonOrdersCount)}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="text-slate-500 text-[10px] bg-slate-50/40 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                    <span>↳ FBM (Vente directe Marketplace)</span>
+                  </td>
+                  {sortedData.map((col) => (
+                    <td key={col.date} className="px-4 py-1 text-center font-medium text-emerald-700">
+                      {formatNumber(col.amazonFbmOrdersCount || 0)}
+                    </td>
+                  ))}
+                </tr>
               </>
             )}
 
@@ -221,6 +243,28 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                   {sortedData.map((col) => (
                     <td key={col.date} className="px-4 py-1.5 text-center text-amber-700 font-semibold">
                       {formatNumber(col.amazonSalesCount)}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="text-slate-500 text-[10px] bg-slate-50/30 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-indigo-500"></span>
+                    <span>↳ FBA (3O-IKFN-12HE)</span>
+                  </td>
+                  {sortedData.map((col) => (
+                    <td key={col.date} className="px-4 py-1 text-center font-medium text-slate-700">
+                      {formatNumber(col.amazonFbaSalesCount ?? col.amazonSalesCount)}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="text-slate-500 text-[10px] bg-slate-50/30 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                    <span>↳ FBM (LUMIOS-FBM)</span>
+                  </td>
+                  {sortedData.map((col) => (
+                    <td key={col.date} className="px-4 py-1 text-center font-medium text-emerald-700">
+                      {formatNumber(col.amazonFbmSalesCount || 0)}
                     </td>
                   ))}
                 </tr>
@@ -404,6 +448,36 @@ export default function PerformancePnlTable({ data = [], granularity = 'monthly'
                     const val = displayMode === 'ht' ? col.amazonRevenue / vatFactor : col.amazonRevenue;
                     return (
                       <td key={col.date} className="px-4 py-2 text-center text-amber-700 font-semibold">
+                        {formatCurrency(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+                <tr className="text-slate-500 text-[10px] bg-amber-50/20 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-indigo-500"></span>
+                    <span>↳ Ventes FBA</span>
+                  </td>
+                  {sortedData.map((col) => {
+                    const rev = col.amazonFbaRevenue ?? col.amazonRevenue;
+                    const val = displayMode === 'ht' ? rev / vatFactor : rev;
+                    return (
+                      <td key={col.date} className="px-4 py-1 text-center font-medium text-slate-700">
+                        {formatCurrency(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+                <tr className="text-slate-500 text-[10px] bg-amber-50/20 animate-fadeIn">
+                  <td className="px-14 py-1 flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
+                    <span>↳ Ventes FBM (Directe)</span>
+                  </td>
+                  {sortedData.map((col) => {
+                    const rev = col.amazonFbmRevenue || 0;
+                    const val = displayMode === 'ht' ? rev / vatFactor : rev;
+                    return (
+                      <td key={col.date} className="px-4 py-1 text-center font-medium text-emerald-700">
                         {formatCurrency(val)}
                       </td>
                     );

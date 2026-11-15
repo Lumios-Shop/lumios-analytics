@@ -54,7 +54,8 @@ export async function getShopifySales(startDate, endDate) {
             headers: {
               'X-Shopify-Access-Token': ACCESS_TOKEN,
               'Content-Type': 'application/json'
-            }
+            },
+            timeout: 15000
           });
           break;
         } catch (apiErr) {

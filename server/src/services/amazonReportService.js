@@ -565,37 +565,71 @@ export async function applyAmazonCsvCostsToDashboard(periodKey) {
     throw new Error("Aucune transaction CSV trouvée pour ce mois.");
   }
 
-  // Agréger par jour pour daily_sku_sales (source = 'amazon')
-  const dailyMap = {};
+  // Récupérer le tarif de livraison à domicile (mensuel ou défaut) pour les commandes FBM
+  const domCostRow = await db.get(`SELECT cost_per_order FROM shipping_method_costs WHERE code = 'domicile'`);
+  const defaultDomCost = domCostRow?.cost_per_order ?? 7.34;
+  const monthlyDomRow = await db.get(`SELECT domicile_cost FROM monthly_shipping_costs WHERE period_key = ?`, [periodKey]);
+  const monthDomCost = monthlyDomRow?.domicile_cost ?? defaultDomCost;
+
+  // Agréger par jour et par SKU pour daily_sku_sales (source = 'amazon')
+  const dailySkuMap = {};
   const dailyAdsMap = {};
 
   for (const r of txRows) {
     if (r.tx_type === 'Commande') {
-      if (!dailyMap[r.tx_date]) {
-        dailyMap[r.tx_date] = { orders: 0, units: 0, revTtc: 0, fees: 0, fba: 0 };
+      const isFbm = (r.sku || '').toUpperCase().includes('FBM') || ((r.fba_fees || 0) === 0 && Math.abs(r.selling_fees || 0) > 0);
+      const sku = isFbm ? 'LUMIOS-FBM' : (r.sku || '3O-IKFN-12HE');
+      const key = `${r.tx_date}__${sku}`;
+      if (!dailySkuMap[key]) {
+        dailySkuMap[key] = {
+          date: r.tx_date,
+          sku,
+          isFbm,
+          orders: 0,
+          units: 0,
+          revTtc: 0,
+          fees: 0,
+          fba: 0
+        };
       }
-      dailyMap[r.tx_date].orders += 1;
-      dailyMap[r.tx_date].units += (r.quantity || 1);
-      dailyMap[r.tx_date].revTtc += (r.product_sales_ht || 0) + (r.product_taxes || 0);
-      dailyMap[r.tx_date].fees += Math.abs(r.selling_fees || 0) + Math.abs(r.other_fees || 0);
-      dailyMap[r.tx_date].fba += Math.abs(r.fba_fees || 0);
+      dailySkuMap[key].orders += 1;
+      dailySkuMap[key].units += (r.quantity || 1);
+      dailySkuMap[key].revTtc += (r.product_sales_ht || 0) + (r.product_taxes || 0);
+      dailySkuMap[key].fees += Math.abs(r.selling_fees || 0) + Math.abs(r.other_fees || 0);
+      dailySkuMap[key].fba += Math.abs(r.fba_fees || 0);
     } else if (r.tx_type === 'Frais de service' && /publicit/i.test(r.description)) {
       dailyAdsMap[r.tx_date] = (dailyAdsMap[r.tx_date] || 0) + Math.abs(r.total_payout || 0);
     }
   }
 
-  // Mettre à jour daily_sku_sales pour chaque jour présent dans le CSV
-  for (const [d, stats] of Object.entries(dailyMap)) {
-    const existing = await db.get(
-      `SELECT sku FROM daily_sku_sales WHERE source = 'amazon' AND date = ? LIMIT 1`,
-      [d]
+  // Mettre à jour daily_sku_sales pour chaque jour et SKU présent dans le CSV
+  for (const stats of Object.values(dailySkuMap)) {
+    const shippingCost = stats.isFbm ? (monthDomCost * stats.orders) : stats.fba;
+    const domicileOrders = stats.isFbm ? stats.orders : 0;
+    const domicileRevenue = stats.isFbm ? stats.revTtc : 0.0;
+
+    await db.run(
+      `INSERT INTO daily_sku_sales (
+        date, sku, source, order_count, sales_count, revenue, fees, shipping_cost,
+        domicile_orders, domicile_revenue
+      ) VALUES (?, ?, 'amazon', ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(date, sku, source) DO UPDATE SET
+        fees = excluded.fees,
+        shipping_cost = excluded.shipping_cost,
+        domicile_orders = excluded.domicile_orders,
+        domicile_revenue = excluded.domicile_revenue`,
+      [
+        stats.date,
+        stats.sku,
+        stats.orders,
+        stats.units,
+        Math.round(stats.revTtc * 100) / 100,
+        Math.round(stats.fees * 100) / 100,
+        Math.round(shippingCost * 100) / 100,
+        domicileOrders,
+        Math.round(domicileRevenue * 100) / 100
+      ]
     );
-    if (existing) {
-      await db.run(
-        `UPDATE daily_sku_sales SET fees = ?, shipping_cost = ? WHERE source = 'amazon' AND date = ? AND sku = ?`,
-        [Math.round(stats.fees * 100) / 100, Math.round(stats.fba * 100) / 100, d, existing.sku]
-      );
-    }
   }
 
   // Mettre à jour ad_spends (source = 'amazon') si aucune dépense API n'est déjà là

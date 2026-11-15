@@ -160,6 +160,16 @@ export async function initDb() {
     console.error("Erreur lors de la migration de la table product_costs :", migErr);
   }
 
+  // Insertion des 2 SKUs Amazon par défaut (FBA et FBM) dans product_costs
+  await db.run(`
+    INSERT OR IGNORE INTO product_costs (sku, name, source, cogs)
+    VALUES ('3O-IKFN-12HE', 'LUMIOS - Expédié par Amazon (FBA)', 'amazon', 8.0)
+  `);
+  await db.run(`
+    INSERT OR IGNORE INTO product_costs (sku, name, source, cogs)
+    VALUES ('LUMIOS-FBM', 'LUMIOS - Vente Directe Marketplace (FBM)', 'amazon', 8.0)
+  `);
+
   // Insertion de paramètres par défaut si non existants
   await db.run(
     `INSERT OR IGNORE INTO settings (key, value) VALUES ('default_amazon_fee_percent', '15.0')`

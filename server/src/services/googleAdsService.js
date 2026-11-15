@@ -111,7 +111,8 @@ export async function getGoogleAdsSpend(startDate, endDate) {
       refresh_token: refreshToken,
       grant_type: 'refresh_token'
     }), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 10000
     });
 
     const accessToken = tokenRes.data.access_token;
@@ -150,14 +151,14 @@ export async function getGoogleAdsSpend(startDate, endDate) {
         return await axios.post(
           `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
           { query: gaql },
-          { headers: makeHeaders(true) }
+          { headers: makeHeaders(true), timeout: 12000 }
         );
       } catch (firstErr) {
         if (loginCustomerId) {
           return await axios.post(
             `https://googleads.googleapis.com/${apiVersion}/customers/${customerId}/googleAds:searchStream`,
             { query: gaql },
-            { headers: makeHeaders(false) }
+            { headers: makeHeaders(false), timeout: 12000 }
           );
         }
         throw firstErr;

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { getDb } from '../db.js';
 
 dotenv.config();
 
@@ -31,7 +32,7 @@ async function getLwaAccessToken() {
       refresh_token: REFRESH_TOKEN,
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET
-    });
+    }, { timeout: 10000 });
     return response.data.access_token;
   } catch (error) {
     console.error("Erreur lors de l'obtention du token LWA Amazon :", error.message);
@@ -81,7 +82,8 @@ export async function getAmazonSales(startDate, endDate) {
             headers: {
               'X-Amz-Access-Token': accessToken,
               'Content-Type': 'application/json'
-            }
+            },
+            timeout: 10000
           });
           break;
         } catch (apiErr) {
@@ -117,19 +119,50 @@ export async function getAmazonSales(startDate, endDate) {
     // Note: Dans une vraie application de production, on utiliserait le SP-API Report API (GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL)
     // car appeler l'API OrderItems sur chaque commande est très lourd et va dépasser les quotas rapidement.
     // À titre d'illustration de la logique d'intégration, voici la structure de traitement :
+    // Récupérer le tarif de livraison à domicile actif pour les commandes FBM (marchand)
+    let defaultDomicileCost = 7.34;
+    const monthlyDomicileMap = {};
+    try {
+      const db = getDb();
+      if (db) {
+        const domRow = await db.get(`SELECT cost_per_order FROM shipping_method_costs WHERE code = 'domicile'`);
+        if (domRow?.cost_per_order) defaultDomicileCost = parseFloat(domRow.cost_per_order);
+        const monthlyRows = await db.all(`SELECT period_key, domicile_cost FROM monthly_shipping_costs`);
+        (monthlyRows || []).forEach(m => {
+          if (m.period_key && m.domicile_cost) monthlyDomicileMap[m.period_key] = parseFloat(m.domicile_cost);
+        });
+      }
+    } catch (dbErr) {
+      console.warn("Impossible de lire les coûts de livraison à domicile pour Amazon FBM :", dbErr.message);
+    }
+
     const dailySkuMap = {};
 
     for (const order of orders) {
       const orderDate = new Date(order.PurchaseDate).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
-      const sku = 'AMAZON-DEFAULT';
+      const periodKey = orderDate.substring(0, 7);
+
+      // Distinguer les 2 SKUs Amazon :
+      // - Si FulfillmentChannel === 'AFN' : Vente expédiée par Amazon (FBA) -> SKU '3O-IKFN-12HE'
+      // - Si FulfillmentChannel !== 'AFN' (MFN) : Vente directe Marketplace (FBM) -> SKU 'LUMIOS-FBM'
+      const isFbm = order.FulfillmentChannel !== 'AFN';
+      const sku = isFbm ? 'LUMIOS-FBM' : '3O-IKFN-12HE';
+      const name = isFbm ? 'LUMIOS - Vente Amazon Marketplace (FBM)' : 'LUMIOS - Expédié par Amazon (FBA)';
+
       const qty = (order.NumberOfItemsShipped || 0) + (order.NumberOfItemsUnshipped || 0) || 1;
       const isCanceled = order.OrderStatus === 'Canceled';
 
-      // Pour les commandes Pending ou Canceled sans montant fourni par l'API Orders, supputer le montant unitaire (40,00€ par défaut)
+      // Pour les commandes sans montant fourni par l'API Orders, supputer le montant unitaire (40,00€ par défaut)
       const rawAmount = parseFloat(order.OrderTotal?.Amount || 0);
       const revenue = rawAmount > 0 ? rawAmount : (40.00 * qty);
       const referralFee = revenue * 0.15; // Commission Marketplace 15%
-      const fbaShippingCost = order.FulfillmentChannel === 'AFN' ? (7.29 * qty) : 0.0; // Frais réels moyens d'expédition Amazon FBA (7,29€/u d'après relevé CSV)
+
+      // Coût d'expédition :
+      // - Si FBM (LUMIOS-FBM) : appliquer le prix de livraison à domicile de la vente directe Shopify
+      // - Si FBA (3O-IKFN-12HE) : frais réels moyens FBA (7,29€/u d'après relevé CSV)
+      const domicileRate = monthlyDomicileMap[periodKey] || defaultDomicileCost;
+      const fbaShippingCost = isFbm ? domicileRate : (7.29 * qty);
+
       const discounts = parseFloat(order.PromotionDiscountAmount?.Amount || 0);
       const returns = isCanceled ? revenue : 0;
 
@@ -138,7 +171,7 @@ export async function getAmazonSales(startDate, endDate) {
         dailySkuMap[key] = {
           date: orderDate,
           sku: sku,
-          name: 'Ventes Amazon Globales',
+          name: name,
           source: 'amazon',
           orderCount: 0,
           salesCount: 0,
@@ -146,7 +179,11 @@ export async function getAmazonSales(startDate, endDate) {
           fees: 0,
           shippingCost: 0,
           discounts: 0,
-          returns: 0
+          returns: 0,
+          domicileOrders: 0,
+          domicileRevenue: 0,
+          relaisOrders: 0,
+          relaisRevenue: 0
         };
       }
 
@@ -158,6 +195,10 @@ export async function getAmazonSales(startDate, endDate) {
         dailySkuMap[key].fees += referralFee;
         dailySkuMap[key].shippingCost += fbaShippingCost;
         dailySkuMap[key].discounts += discounts;
+        if (isFbm) {
+          dailySkuMap[key].domicileOrders += 1;
+          dailySkuMap[key].domicileRevenue += revenue;
+        }
       } else {
         dailySkuMap[key].returns += returns;
       }
