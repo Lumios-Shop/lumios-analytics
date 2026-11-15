@@ -233,14 +233,22 @@ export default function Dashboard({ refreshTrigger }) {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => fetchSalesData(filter.startDate, filter.endDate, filter.granularity || 'daily', true)}
-            disabled={loading}
-            className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Connexion en cours...' : 'Reconnecter / Réessayer'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => fetchSalesData(filter.startDate, filter.endDate, filter.granularity || 'daily', false)}
+              className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer active:scale-95"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Connexion en cours...' : 'Reconnecter'}
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-1.5 bg-white border border-rose-300 hover:bg-rose-100/60 text-rose-800 font-bold text-xs px-3 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer"
+              title="Recharger la page"
+            >
+              Actualiser la page
+            </button>
+          </div>
         </div>
       )}
 

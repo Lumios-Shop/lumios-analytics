@@ -22,19 +22,33 @@ export async function authFetch(url, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers
-  });
+  // Timeout automatique de 15s pour éviter de figer l'interface et bloquer les boutons
+  const controller = new AbortController();
+  const timeoutMs = options.timeout || 15000;
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error('Délai d\'attente de 15s dépassé (le serveur local ne répond pas).'));
+  }, timeoutMs);
 
-  if (res.status === 401) {
-    // Si le token est invalide ou expiré, déconnecter et réafficher le formulaire de login
-    localStorage.removeItem('lumios_admin_token');
-    localStorage.removeItem('lumios_admin_user');
-    if (typeof window !== 'undefined') {
-      window.location.reload();
+  const signal = options.signal || controller.signal;
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      signal
+    });
+
+    if (res.status === 401) {
+      // Si le token est invalide ou expiré, déconnecter et réafficher le formulaire de login
+      localStorage.removeItem('lumios_admin_token');
+      localStorage.removeItem('lumios_admin_user');
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
     }
-  }
 
-  return res;
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

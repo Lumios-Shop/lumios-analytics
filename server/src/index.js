@@ -99,6 +99,10 @@ app.post('/api/auth/login', (req, res) => {
   return res.status(401).json({ error: 'Identifiants incorrects. Accès réservé à l\'administrateur.' });
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: Date.now() });
+});
+
 /**
  * Endpoint : Récupérer les ventes et marges quotidiennes agrégées
  * GET /api/sales?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&force=true
